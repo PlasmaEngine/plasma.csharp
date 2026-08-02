@@ -1,0 +1,103 @@
+{
+  "manifestVersion": 1,
+  "canonicalIdentityVersion": 1,
+  "schemaHash": "0000000000000001",
+  "types": [
+    {
+      "id": "B8225B3FF0701016",
+      "canonicalIdentity": "pl-script-binding/type/v1:31:plScriptExtensionClass_CSharpM0",
+      "nativeName": "plScriptExtensionClass_CSharpM0",
+      "pluginName": "CSharpPlugin",
+      "parentNativeName": "",
+      "scriptExtensionName": "CSharpM0",
+      "flags": 8,
+      "variantType": 0,
+      "typeVersion": 1,
+      "typeSize": 1,
+      "enumStorageTypeName": "",
+      "canAllocate": false,
+      "hidden": false,
+      "excludedFromScript": false,
+      "attributes": []
+    },
+    {
+      "id": "0000000000000100",
+      "canonicalIdentity": "type:plMsgCSharpM0",
+      "nativeName": "plMsgCSharpM0",
+      "pluginName": "CSharpPlugin",
+      "parentNativeName": "plMessage",
+      "scriptExtensionName": "",
+      "flags": 8,
+      "variantType": 0,
+      "typeVersion": 1,
+      "typeSize": 8,
+      "enumStorageTypeName": "",
+      "canAllocate": true,
+      "hidden": false,
+      "excludedFromScript": false,
+      "attributes": []
+    }
+  ],
+  "properties": [
+    {
+      "id": "0000000000000101",
+      "canonicalIdentity": "property:plMsgCSharpM0.Amount",
+      "declaringTypeId": "0000000000000100",
+      "declaringTypeName": "plMsgCSharpM0",
+      "nativeName": "Amount",
+      "category": 1,
+      "flags": 1,
+      "valueTypeId": "A0BEC062BAB60889",
+      "valueTypeName": "plInt64",
+      "hasDefaultValue": false,
+      "attributes": []
+    }
+  ],
+  "functions": [
+    {
+      "id": "19E0103DEBB2F285",
+      "canonicalIdentity": "pl-script-binding/function/v1:31:plScriptExtensionClass_CSharpM05:Probe1:11:07:plInt641:11:12:in7:plInt641:1",
+      "declaringTypeId": "B8225B3FF0701016",
+      "declaringTypeName": "plScriptExtensionClass_CSharpM0",
+      "nativeName": "Probe",
+      "publicName": "Probe",
+      "functionType": 1,
+      "flags": 0,
+      "returnTypeId": "A0BEC062BAB60889",
+      "returnTypeName": "plInt64",
+      "returnFlags": 1,
+      "isBaseClassFunction": false,
+      "parameters": [
+        {
+          "index": 0,
+          "name": "Input",
+          "direction": "in",
+          "typeId": "A0BEC062BAB60889",
+          "typeName": "plInt64",
+          "flags": 1,
+          "hasDefaultValue": false,
+          "isDynamicPin": false,
+          "attributes": []
+        }
+      ],
+      "attributes": []
+    }
+  ],
+  "messages": [
+    {
+      "id": "0000000000000102",
+      "canonicalIdentity": "message:plMsgCSharpM0",
+      "typeId": "0000000000000100",
+      "typeName": "plMsgCSharpM0",
+      "parentTypeId": "0000000000000000",
+      "parentTypeName": "plMessage",
+      "properties": [
+        "0000000000000101"
+      ],
+      "writableProperties": [
+        "0000000000000101"
+      ]
+    }
+  ],
+  "diagnostics": []
+}

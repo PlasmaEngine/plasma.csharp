@@ -1,0 +1,77 @@
+// plasma.csharp — hosted .NET C# scripting.
+//
+// The AUTHORED manifest, kept in source next to the plugin. It declares identity, compatibility,
+// what to load and what to ship. Component hashes and sizes are NOT here: the packaging step
+// computes those and emits them into the published manifest that ships inside the .plpkg.
+//
+// Field reference and validation rules: Docs/PluginPackageManagerPlan.html §05.
+
+PackageInfo
+{
+	// ---- identity -------------------------------------------------------------
+	// Version starts at 1.0.0 rather than inheriting an engine version: this package
+	// versions on its own changes from now on, not on the engine's.
+	string %Id{"plasma.csharp"}
+	string %Version{"1.0.0"}
+	string %Publisher{"PlasmaTechnology"}
+	string %License{"MIT"}
+	string %Homepage{"https://plasmagameengine.com"}
+
+	// ---- compatibility --------------------------------------------------------
+	// Must equal plSdkVersion::GetAbiTag() of the engine these binaries were built
+	// against. The build configuration is part of it - a Development and a Shipping
+	// build do not share a binary interface.
+	string %MinEngineVersion{"0.7.0"}
+	string %MaxEngineVersion{"0.7.0"}
+	string %AbiTag{"win64-msvc19-0.7.0-dev"}
+
+	// ---- presentation ---------------------------------------------------------
+	string %DisplayName{"C#"}
+	string %Category{"Scripting"}
+	string %Description{"C# scripting hosted on .NET 10, with an editor asset type for script projects and live reload of compiled assemblies.
+
+The .NET runtime itself is an optional component. Install it and the package is self-contained; skip it and the plugin uses a .NET 10 runtime installed on the machine."}
+	string %Icon{"Branding/CSharpIcon.png"}
+	string %Banner{"Branding/CSharpBanner.png"}
+
+	// ---- binaries -------------------------------------------------------------
+	// The managed payload is a build output, so it is matched by glob rather than
+	// enumerated - listing each assembly would go stale the first time one is added.
+	// DotNet is deliberately NOT here: it is its own optional component below.
+	string %EditorPlugins{"plEditorPluginCSharp"}
+	string %EditorEnginePlugins{}
+	string %RuntimePlugins{"plCSharpPlugin"}
+	string %PackageDependencies{"nethost.dll", "CSharp/*"}
+
+	// ---- dependencies ---------------------------------------------------------
+	// None. The plugin binds to plCore and the editor framework, both part of the
+	// engine rather than packages.
+
+	// ---- components -----------------------------------------------------------
+	Component { string %Name{"manifest"} string %Platform{"any"} }
+	Component { string %Name{"runtime-win64"} string %Platform{"win64"} }
+	Component { string %Name{"editor-win64"} string %Platform{"win64"} }
+	Component { string %Name{"icon"} string %Platform{"any"} }
+	Component { string %Name{"banner"} string %Platform{"any"} }
+
+	// The private .NET runtime: 77 MB, and genuinely optional rather than nominally
+	// so. plCSharpHost sets bUsePrivateRuntime from whether host/fxr/<ver>/hostfxr.dll
+	// is present, and passes dotnet_root=nullptr when it is not - so without this
+	// component hostfxr resolves a machine-wide .NET 10 install instead. Anyone who
+	// already has the SDK needs nothing from here.
+	//
+	// Named for what it is rather than for which package owns it: the package is
+	// already known from context, and a name per package would mean editing the
+	// catalogue's component vocabulary every time one ships an optional payload.
+	//
+	// Blobs are content-addressed, so this uploads once and every later version that
+	// does not change the runtime resolves to the same bytes.
+	Component
+	{
+		string %Name{"tool"}
+		string %Platform{"win64"}
+		bool %Optional{true}
+		string %Label{"Bundled .NET 10 runtime (77 MB)"}
+		string %Path{"Bin/Windows_x64_Development/DotNet"}
+	}
+}

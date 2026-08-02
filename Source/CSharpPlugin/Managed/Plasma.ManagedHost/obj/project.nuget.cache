@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "qzQxz9g2rTM=",
+  "success": true,
+  "projectFilePath": "E:\\PlasmaTech\\LocalPackages\\plasma.csharp\\Source\\CSharpPlugin\\Managed\\Plasma.ManagedHost\\Plasma.ManagedHost.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\drago\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.10\\microsoft.netcore.app.runtime.win-x64.10.0.10.nupkg.sha512",
+    "C:\\Users\\drago\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.10\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.10.nupkg.sha512",
+    "C:\\Users\\drago\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.10\\microsoft.aspnetcore.app.runtime.win-x64.10.0.10.nupkg.sha512",
+    "C:\\Users\\drago\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\10.0.10\\microsoft.netcore.app.host.win-x64.10.0.10.nupkg.sha512"
+  ],
+  "logs": []
+}

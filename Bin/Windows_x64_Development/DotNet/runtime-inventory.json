@@ -1,0 +1,957 @@
+﻿[
+    {
+        "path":  "host/fxr/10.0.10/hostfxr.dll",
+        "bytes":  379688,
+        "sha256":  "D1012D5B8FF1329D5BAA6D58AA02C4277ACBE58CFD1DC5F10D7E6BB8E9A0D94A"
+    },
+    {
+        "path":  "LICENSE.TXT",
+        "bytes":  1139,
+        "sha256":  "D7A68596AB69B06F51CA278A6545148E4269A9381C26D597C13DF5D88E08CF5B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/clretwrc.dll",
+        "bytes":  317736,
+        "sha256":  "2DBA4804094FB9080AD7954D6664C168F85C244691198046FAF9D33E12E70107"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/clrgc.dll",
+        "bytes":  673104,
+        "sha256":  "CA2D50A39E14BBE2666D53789317E87DAF65AF8B2870AB400B352BB2734AEC33"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/clrgcexp.dll",
+        "bytes":  710952,
+        "sha256":  "E683EB9C26C7CF77AE7F27369472D107E7426D6421A5E6ABA24E58A35630F9E4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/clrjit.dll",
+        "bytes":  2092328,
+        "sha256":  "9A74076395F6E7BCBB932C8B6EB412D1FBBFF43B954C49F9D5015E467D8402E9"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/coreclr.dll",
+        "bytes":  4614952,
+        "sha256":  "58859F85A30CC71313B281898E7CFBDBB9ECCB95AE2A3F865329EFD47EBF31BB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/createdump.exe",
+        "bytes":  71512,
+        "sha256":  "B6B5611F41D6A3F03AB9C37EE5FDFDB6837D72910779BE23D125F3212FAFEAE8"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/hostpolicy.dll",
+        "bytes":  378664,
+        "sha256":  "E9C723BF674EF7F6E6C1CC5D4EE694715B864F480C56BAAF354B8CF7C9B40B87"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.CSharp.dll",
+        "bytes":  980816,
+        "sha256":  "E140ACEC05BDE933BF7075D501B6ADB357B8E1C53C0519827731904FB2A3420F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.DiaSymReader.Native.amd64.dll",
+        "bytes":  2195504,
+        "sha256":  "315A61C47C41B8D4C815F4274BB6584C1D24B4640C7EEDC354ED5B03A9A1361E"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.NETCore.App.deps.json",
+        "bytes":  29720,
+        "sha256":  "ECCEEA0640C2A011BE009F1D1B8A826D0BD66255E159F9986C6815F4363DA560"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.NETCore.App.runtimeconfig.json",
+        "bytes":  54,
+        "sha256":  "31C8CE517CDDC0DEACEB26B5DFF6BA5DF55AC4E06E9AFD0026E51FACA23DC8A4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.VisualBasic.Core.dll",
+        "bytes":  1193768,
+        "sha256":  "897F3D3938B03156202ACF780BBE156227E034785BD17305B17657C911C62203"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.VisualBasic.dll",
+        "bytes":  17192,
+        "sha256":  "D58ECDAEF545A533ECD96F4BF2D1E73F5F0FA7615F37E68859EE19A6ECDD1E31"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.Win32.Primitives.dll",
+        "bytes":  15696,
+        "sha256":  "1C6D1EE2A3D8A82A097D5E1EDA84FBDDCA57FBE5FC426F0F39AA9D2B486BC3DC"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/Microsoft.Win32.Registry.dll",
+        "bytes":  116520,
+        "sha256":  "EB249FB10EB8687D3505FD9276480FB9A0C13DC975CE6BCC35E2E2E723E8D559"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/mscordaccore.dll",
+        "bytes":  1356632,
+        "sha256":  "01625B0382D7CCAB664DDB0997DE2BB66E059FC547061F3D830914D6229A07F6"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/mscordaccore_amd64_amd64_10.0.1026.32716.dll",
+        "bytes":  1356632,
+        "sha256":  "01625B0382D7CCAB664DDB0997DE2BB66E059FC547061F3D830914D6229A07F6"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/mscordbi.dll",
+        "bytes":  1237888,
+        "sha256":  "35AA0553836E034308189A97ED55B6722636960CB201E252C20BD49F8AC65EAD"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/mscorlib.dll",
+        "bytes":  59688,
+        "sha256":  "EC2FDD1E7113428E9C2E0AA8BEA39D54F4DAFC2102434AA0A13C31F7ED1A4FB2"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/mscorrc.dll",
+        "bytes":  133928,
+        "sha256":  "331CE4F5BD1CFD59A4E1537CA62D5CC5693675B8C82A42125AB24E8D5104D1A0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/msquic.dll",
+        "bytes":  524320,
+        "sha256":  "99DAF179EE2DFB5C36493543647B64FC58A24ABA0B16D5E9232B06003FBC9054"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/netstandard.dll",
+        "bytes":  100648,
+        "sha256":  "F9078068ADD6F69455772C526A69A134AE520199EB1C5513F7D80A871FC09851"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.AppContext.dll",
+        "bytes":  15144,
+        "sha256":  "1776B3C8D8E40CE4BAEE66904870272305546233CAB9C84BCCF95CBE685B7887"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Buffers.dll",
+        "bytes":  15144,
+        "sha256":  "4A5E9E4B8D439BFEDE0435440E252000A5F2E4A5D4B915F243E909CA61BC528B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Collections.Concurrent.dll",
+        "bytes":  231208,
+        "sha256":  "5A4B728246443EB3B4C0A16D9B3D04BC0BCE60B7A1998FA4A75716358CC572FF"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Collections.dll",
+        "bytes":  296784,
+        "sha256":  "FC52BE0ABCEAC360478FFFFCE876C99997B4AF56FC36FBF07CFC38AC5B7FDD7F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Collections.Immutable.dll",
+        "bytes":  976680,
+        "sha256":  "C1537A4F73A7D9FA028B127A5DD7D4F0E839C75C22C8E895722283A8AADF6028"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Collections.NonGeneric.dll",
+        "bytes":  104232,
+        "sha256":  "B64B8F2ACAF773BC08E20E3A43D562A15A98D9A8C19F3E5DB292DFE4FE21CF38"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Collections.Specialized.dll",
+        "bytes":  104232,
+        "sha256":  "8A1CF61A6CD079444AE790123FFC90BCD8D369EC5AED0F2F95D159A6479690B3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ComponentModel.Annotations.dll",
+        "bytes":  198480,
+        "sha256":  "FE7B216E9AC726CBCC31DCDAAF99F74918AD3C255100E3571F635E46F3FE5A36"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ComponentModel.DataAnnotations.dll",
+        "bytes":  16720,
+        "sha256":  "CA01349CD2181D50D15BC476D542D23E62A2771D4BF9D467AD8D4F61563F5754"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ComponentModel.dll",
+        "bytes":  30504,
+        "sha256":  "23C6A24F67244C647A614AF3249181DC68AD02ACC3EBD3CDEDF62B2DF8DA503A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ComponentModel.EventBasedAsync.dll",
+        "bytes":  46888,
+        "sha256":  "D0E3554DC311C75014A9C7E9CF8137D5881D6F7A8C3B739FD9E85FEC2BE13164"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ComponentModel.Primitives.dll",
+        "bytes":  79656,
+        "sha256":  "52E0988E01955D09170339429CEDE1D578690418B8851E19DDBBA7D22A6490F7"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ComponentModel.TypeConverter.dll",
+        "bytes":  767784,
+        "sha256":  "F41FB0C7373B94E082D41A49A02F95AC6DA92114AA712DCD8EDDCFD27FBFD592"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Configuration.dll",
+        "bytes":  19280,
+        "sha256":  "24D363FCCB6CEF1B612FF6C3D9E2524C766713AAA3B5762AED169CC41C5CAF30"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Console.dll",
+        "bytes":  169768,
+        "sha256":  "D6C46A682587937775464BB1A3850A9D3E11408440731FEFB07D298CD6D7A99C"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Core.dll",
+        "bytes":  23336,
+        "sha256":  "F8732FB6C15B84E7C10026D7D01AC6C7772B8E8FECEBE6B0A6B6C4776B3D763D"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Data.Common.dll",
+        "bytes":  2770728,
+        "sha256":  "EA52008BC561C36FB8B78AA42AB760FE4D00D8F05ED2F953A2F2432FA5712BDB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Data.DataSetExtensions.dll",
+        "bytes":  15696,
+        "sha256":  "EC6614F5A6EBD42061848AD3475ADB2E1717815309A7C5C4E87B5590108C2F98"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Data.dll",
+        "bytes":  25424,
+        "sha256":  "36FABEAAF88AFFE70BD3CFFFC82ED936D4C94E1B43CAE48B6DBE6E98C72AF119"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.Contracts.dll",
+        "bytes":  16168,
+        "sha256":  "3EF6F93DEECA5B85EDB693194E5B4529220420A0C6CA0F3A9D1A2AC0826AC0A0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.Debug.dll",
+        "bytes":  15656,
+        "sha256":  "DF925984086638F1046E1C5BD695107C7A3397E43767C01248A36360E4D6FA9B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.DiagnosticSource.dll",
+        "bytes":  501544,
+        "sha256":  "AA6ED09AA5B7588D8CDCF9D88C9C5317BE654C06CDB08D161B61C607DC09C14F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.FileVersionInfo.dll",
+        "bytes":  46888,
+        "sha256":  "FF481F04E205C815DDBB48E622515B426E6614C9AD968ED4F3DB42A63420A3BB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.Process.dll",
+        "bytes":  329512,
+        "sha256":  "F2AD68F64541926EDB0EA5F040775A49991AC0F24BAF98B2DE62AB038B69C895"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.StackTrace.dll",
+        "bytes":  46888,
+        "sha256":  "2436E12F3C710100F38B9404FB3893C3DA3EE295641F5B4BE442A4AA0DEEA8FA"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.TextWriterTraceListener.dll",
+        "bytes":  67368,
+        "sha256":  "B5D9E94D097856E49A5C61A87B442D42F2F70D76D7CE7B7E897F594B5194558F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.Tools.dll",
+        "bytes":  15184,
+        "sha256":  "D0712E1303D134CB75F4425A2F764390D965DEC6B41195600BFAE18F97B0E0F5"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.TraceSource.dll",
+        "bytes":  141096,
+        "sha256":  "08C9B12B71BE630BD29FBCA96AF28E790962EFC8F2006363788AC592B1B97886"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Diagnostics.Tracing.dll",
+        "bytes":  16168,
+        "sha256":  "1E531D4462AA8134D81405EA745153395E068504704F84F447D50B4586DCC213"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.dll",
+        "bytes":  50512,
+        "sha256":  "F2BDFD2096AEADF69EA2C9E747F0CA2842127CDE1770D1643BF13BFC70649361"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Drawing.dll",
+        "bytes":  20304,
+        "sha256":  "2D6706F2B1B885E31FDCE57EEF38ED308CDD1563877D51BCFECC19A9268125B4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Drawing.Primitives.dll",
+        "bytes":  132904,
+        "sha256":  "D55E07078DF7E78A52992E8123F27AD01E632D6ED0AE12C08F099AF33B36DBDB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Dynamic.Runtime.dll",
+        "bytes":  16208,
+        "sha256":  "EAA819F663BEF9CB04890C9797AA7B0110BCA064E62EA47AA221548707BAAE5B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Formats.Asn1.dll",
+        "bytes":  239400,
+        "sha256":  "36D5622B54E87A3444AF5E26E5B69E8CB048F41CCEB66583689E555232DEFED3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Formats.Tar.dll",
+        "bytes":  272168,
+        "sha256":  "37916824B9F130F7E924BE01B1BB1A479636972C3B27AF307B26592597FAD2B3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Globalization.Calendars.dll",
+        "bytes":  15656,
+        "sha256":  "17934D74CA8AE2ADF890BE3BBFDFFD02C4D74D090010D808B4403E721F33A67B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Globalization.dll",
+        "bytes":  15656,
+        "sha256":  "3AE6F3C344796033247F710612F2944688DEF8C79BA80B4846B8B14C984F844F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Globalization.Extensions.dll",
+        "bytes":  15144,
+        "sha256":  "AEB5D04073661DF29BD5EC68F5A5786DF4CA620BA168A9AA58B91AB6AD316FE1"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Compression.Brotli.dll",
+        "bytes":  83752,
+        "sha256":  "3B770188543233B988F44F5FE48E92FFB2C81C63978B89FF8DA574EDAF43E60C"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Compression.dll",
+        "bytes":  419664,
+        "sha256":  "FCC979A99B747680A81F5EAF71ADD66F3876588E59C90EDF826C37E525D4F0B2"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Compression.FileSystem.dll",
+        "bytes":  15184,
+        "sha256":  "AAEA6B18581ABE925D9EE38749773363D73C8C033C63B284AF3FAA228430ADE9"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Compression.Native.dll",
+        "bytes":  937808,
+        "sha256":  "A61A917B3DF5D74AF1F997A82C0137076FE0FD3C3E0038423E3690924FB10C67"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Compression.ZipFile.dll",
+        "bytes":  100136,
+        "sha256":  "7634D9C46F688033A8A7CC6BEE22770B032E2E611DA5CC1D57F3D63984774FF0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.dll",
+        "bytes":  15656,
+        "sha256":  "7B40C8B70BF1B61924B4FADE11D4325151DEBC2F5733F32FBE3409621914C802"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.FileSystem.AccessControl.dll",
+        "bytes":  104272,
+        "sha256":  "1E8DCA7E8CEC6BFA9C1BAF966550EF4B2482BAE6439D6D2AE55DADC265FF11A0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.FileSystem.dll",
+        "bytes":  15656,
+        "sha256":  "FF3FE903E942724EBB71F363D973CB4225B4F14D0E05EBF73D0B30E0F46C1486"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.FileSystem.DriveInfo.dll",
+        "bytes":  55120,
+        "sha256":  "375E715D0B7AF1B756FCD06C7912791BF714BE03832ECF0D9C4D7F885C98CC3A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.FileSystem.Primitives.dll",
+        "bytes":  15184,
+        "sha256":  "6D025A5EE98A81AC276250EEA1A2677EA0792C75F9D1A9807C8A775E75B100CE"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.FileSystem.Watcher.dll",
+        "bytes":  87888,
+        "sha256":  "791FFD9AD477481C3CA2D255B325A991D03AEC46B6C51241E96247379EFC37DD"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.IsolatedStorage.dll",
+        "bytes":  87848,
+        "sha256":  "B2150ACFADE522755ED15027112541BB4655107BB85122507C03D9E879E682A1"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.MemoryMappedFiles.dll",
+        "bytes":  83752,
+        "sha256":  "DE6DE29FD36C52173C9A82C059C430CC6CA3FFB4A61AABF896C8FF56E6EED3D4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Pipelines.dll",
+        "bytes":  190248,
+        "sha256":  "427B8641BBCCE1E355C8B72415BD8EF10C91EB4171C77FAE001674DF495CB5F8"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Pipes.AccessControl.dll",
+        "bytes":  15656,
+        "sha256":  "DAC370E76771C3843C8238FE91562F09D8F28E318A6DA1B05F76AFBF40EFF8CF"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.Pipes.dll",
+        "bytes":  165672,
+        "sha256":  "EA4E651E0C0E18ECC380013769D1864F9777B2D28964D8DAB24C37FF6ED59206"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.IO.UnmanagedMemoryStream.dll",
+        "bytes":  15656,
+        "sha256":  "67EB115D743C83CADE373AF3FDF7D6D4E4FDD6E26105B21E8968727821F707E0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Linq.AsyncEnumerable.dll",
+        "bytes":  1292072,
+        "sha256":  "F62A69BE4B87AEFD74CA7080F4D1FAC332A8B81640EC40E1C61ED3B2133AA1BC"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Linq.dll",
+        "bytes":  698192,
+        "sha256":  "4A5D41332ED37F7E195503EBD3F478DA2AD0008CB8A9F85739B53D2DF7D33D46"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Linq.Expressions.dll",
+        "bytes":  3639120,
+        "sha256":  "75EFC145C24374E41B3523B4BBF06E5FA415CB63C6BC4DA717AA58440871C0C3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Linq.Parallel.dll",
+        "bytes":  775976,
+        "sha256":  "CE2D359AB186C59558967D3442E705558E0D13F814EC39F40C16B9076385652F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Linq.Queryable.dll",
+        "bytes":  182096,
+        "sha256":  "D7D0418293D01388701C4CC557223DAA2E88E1AFEDE9B67445F9058ACAEBE675"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Memory.dll",
+        "bytes":  161616,
+        "sha256":  "03C2FE17DBD4E1CD709F6DA1FF221EAFAF3F076D23F8FC62DDFF5302C152E97D"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.dll",
+        "bytes":  17232,
+        "sha256":  "115811026128A2BDC84EAD6C4F6A7B35B296D092420FA5794D3C07402AB9E9D4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Http.dll",
+        "bytes":  1746768,
+        "sha256":  "277EE31DF794738D802C9DCA109565EE1F549E733741AF03B17F907208D13538"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Http.Json.dll",
+        "bytes":  128848,
+        "sha256":  "93D66D4F208CD3F36C0C52814F62C3A06E28E909F551E6F6F01CE66DB4282148"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.HttpListener.dll",
+        "bytes":  534312,
+        "sha256":  "53D55125F448882EC2D002CCE5726B5825A22847642F8C659CBA0AE1BD2B97D1"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Mail.dll",
+        "bytes":  481104,
+        "sha256":  "01D3BB4D99659B85E6AF59CA33F78FD7C4F5B5BC540BE69B384F086687B04D3D"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.NameResolution.dll",
+        "bytes":  124752,
+        "sha256":  "EA47FA390901B0AFE369711065F79D86F1CF01A307746A82C4DFD3BB94E156A0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.NetworkInformation.dll",
+        "bytes":  157520,
+        "sha256":  "7A520CBC73FAB570BC069717D0B73EFC03CC100196FF42137DBA24066EEEDB83"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Ping.dll",
+        "bytes":  91944,
+        "sha256":  "927C63C02F6AC45D190C8994A1890C1E45D1144474D48D436FA101EBA46E3DDC"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Primitives.dll",
+        "bytes":  210768,
+        "sha256":  "E0BE3D784A346FFA419A5B4F6ABA91D20A909A122B01CE331C4AC1560BF93C3C"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Quic.dll",
+        "bytes":  358224,
+        "sha256":  "16F6B9232BECCA3460E98F84D007B59F0D3DB52372F7DAAE91AB315D95071241"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Requests.dll",
+        "bytes":  374568,
+        "sha256":  "7942B966861E88D53FCF6B9E2225AE9339211ECEA137D642A770D2A7A6CD422F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Security.dll",
+        "bytes":  665384,
+        "sha256":  "F799F93FBAD3C47EA98133AFC31011B68DD808813B4FB73208C6DDA7BDD657B4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.ServerSentEvents.dll",
+        "bytes":  83752,
+        "sha256":  "6CC0F5145098168824CB6CCEC1227E7F30CEB8F9756BFCB93F9FAA89A97F5016"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.ServicePoint.dll",
+        "bytes":  15144,
+        "sha256":  "61EA5C4619572E1CCE028E75E4184901ECF2BD7AAF2F93E498B448A7FA3750AC"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.Sockets.dll",
+        "bytes":  530216,
+        "sha256":  "53811A06F50F436DB22D1279E5A209220FF363154E7C8981C8248D38F4C7798B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.WebClient.dll",
+        "bytes":  165712,
+        "sha256":  "7F4A639CF94A0856BC1496DEA2E2A998D5784E505A197FCAC1B5D07E140B26AD"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.WebHeaderCollection.dll",
+        "bytes":  63272,
+        "sha256":  "36A83EF10E19143A421839D2AE9634B22982E94FEB7D0E0A6A602D057DE093E6"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.WebProxy.dll",
+        "bytes":  42792,
+        "sha256":  "1CD3E7330632C77DE0EB0A30CED6A99B97BFE36418CAFDDCD0DE525010A65219"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.WebSockets.Client.dll",
+        "bytes":  104232,
+        "sha256":  "2DDCA43E2F4F81C06AFDF1FD0556A7533499D5C440310341BBC287060D3BACF3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Net.WebSockets.dll",
+        "bytes":  243496,
+        "sha256":  "2794E1D55E990713018D520A3F2C3CDC764DB44816ABCD7272F0F3A110B6D5D1"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Numerics.dll",
+        "bytes":  15144,
+        "sha256":  "2CCE5D7469A5E13BB7B8380DA457C75E406AE260FACEB7D5FCFC7EFBDDD02E2F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Numerics.Vectors.dll",
+        "bytes":  15656,
+        "sha256":  "444D4CF2EB56A1E61EA5413813C9AAB0D6A47749E620526907B4CAA7DB95EDC6"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ObjectModel.dll",
+        "bytes":  79696,
+        "sha256":  "12CB278AF864552E15AF8C2AD2B0A29F2D4C571431B4D90A0C2E8ED9E57D90BE"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Private.CoreLib.dll",
+        "bytes":  16033576,
+        "sha256":  "76A49F17E83F613BC8A5B55FC98830B764E7838265AACBDBCC8F46707F80A3C9"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Private.DataContractSerialization.dll",
+        "bytes":  2062160,
+        "sha256":  "61C1BAE125A218E45E0BF517DC6633263280408C96C6D367D1839EE6A8BAE936"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Private.Uri.dll",
+        "bytes":  255784,
+        "sha256":  "27B93D6E754D7D2E538333E3C1D520C64D7EB012DDE1705E776177B273662B7D"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Private.Xml.dll",
+        "bytes":  7788328,
+        "sha256":  "D62389B5B3617EC44E31232440A525A2618D5056B4B9ED86ABF51250EDF7BCA0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Private.Xml.Linq.dll",
+        "bytes":  390952,
+        "sha256":  "05462AA6F954C3C3C52C668416EFCAD04B4B2EBE37DF247FE20ED5CAA47E7A6E"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.DispatchProxy.dll",
+        "bytes":  75560,
+        "sha256":  "85C4C9D47ADED01FD0C01780B8152AADF1CC20AC97853764756734B872A0EDA0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.dll",
+        "bytes":  16208,
+        "sha256":  "5E915AA614291026130BA1B619294868A8D9B4D9DFFF1AA5CB8B745BCC451756"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.Emit.dll",
+        "bytes":  309032,
+        "sha256":  "D995259A96CBA4D1E13D8E65DA0CC835AF1961D9CF46340531D7D8BA3ADBC6A3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.Emit.ILGeneration.dll",
+        "bytes":  15656,
+        "sha256":  "AB4BBC69CCDDC720351B4293890D4461740203E54DF614B5605FD69D2C4C8148"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.Emit.Lightweight.dll",
+        "bytes":  15656,
+        "sha256":  "99CD08AEC7ED10F906DD9560F194A1C6EF843B60C1E34CAB0BD6815E13725C19"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.Extensions.dll",
+        "bytes":  15144,
+        "sha256":  "DD4CF0A2F78784A58A0D9B937CD00C8D030940B79B9110C3420D388078B5869F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.Metadata.dll",
+        "bytes":  1156904,
+        "sha256":  "5E745D60BC682671B9A0813F515ECA84B61710E1F84136B69FC09EC8821F92B2"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.Primitives.dll",
+        "bytes":  15696,
+        "sha256":  "D25735120C998FF3FBD5CD9A0FEE8033BF6736E88DC4EFE59C7789F44A905E6A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Reflection.TypeExtensions.dll",
+        "bytes":  42792,
+        "sha256":  "3438380D510ED09241B34428690F752A1E08FBE392AEFDB3C76EC3819AF12156"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Resources.Reader.dll",
+        "bytes":  15184,
+        "sha256":  "21E2A6135134183EF040AED2FF94DE50EFA63C1D2124AA0337EE49139D6C8299"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Resources.ResourceManager.dll",
+        "bytes":  15656,
+        "sha256":  "DCDA318334FBC517495C7FE6EC335CFE856A634112119C63B35A9E4CE9B9F667"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Resources.Writer.dll",
+        "bytes":  50984,
+        "sha256":  "D3D5485DF887AAB86DE76C4D22D19641B6CBBD79754CA89C6805A6CE45BAF60A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.CompilerServices.Unsafe.dll",
+        "bytes":  15144,
+        "sha256":  "50B76C3723B529D6D6FDE67B297409F875E20C7F7D45B8497BE379C24207A322"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.CompilerServices.VisualC.dll",
+        "bytes":  30504,
+        "sha256":  "95F383B9CC7811BE9B9AEC45591FD2E0DBF6CD09406A29A3B3D8ED980F7D02B4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.dll",
+        "bytes":  44880,
+        "sha256":  "60D0795848D15C0EE9C37D6B97DFEF12EB48292FFDA3E9054204B2C3A6A89B19"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Extensions.dll",
+        "bytes":  17744,
+        "sha256":  "A474FD258722FFB4AF11ECD6E5765A27713307FAA11DBF804414814A2099BB5A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Handles.dll",
+        "bytes":  15656,
+        "sha256":  "1F6AAA3CA188434C80FF6FAD600915E0D2F3ADA0746FF5D0F0ECF13AB398AC41"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.InteropServices.dll",
+        "bytes":  112424,
+        "sha256":  "627A86A918F6669F94CF8DB6CE064A4B2207B852BA6A4FECACCAD7BB07859B4F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.InteropServices.JavaScript.dll",
+        "bytes":  51024,
+        "sha256":  "03DFFF8C7082A64866FEAE2D0822DA69708900D7635BB48B5B73881C8292CAD0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.InteropServices.RuntimeInformation.dll",
+        "bytes":  15696,
+        "sha256":  "CC959B69928F28420D31360EE8BF793C6F3E4D5809752CF1D386EFE01DC49AAA"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Intrinsics.dll",
+        "bytes":  17192,
+        "sha256":  "A24E7018598B352D1ADE1BC452B2C65A31902B56CE1FC1FCCD8B26E2677943C8"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Loader.dll",
+        "bytes":  15656,
+        "sha256":  "404791BE0D21A5EE0119EC08416A5AE18F3BBFBBC9F4D6A6AD7C3A9C667AAA25"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Numerics.dll",
+        "bytes":  354088,
+        "sha256":  "8C715E55C80A4AB31D086B5E51261D691B52B867B1C1F5D99C344EA4FAA27F4B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Serialization.dll",
+        "bytes":  17192,
+        "sha256":  "1F4C9A42EC5B5D4DA23A82FC1952E01CF395E99CFABC8A7D0F5A4B304E24915A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Serialization.Formatters.dll",
+        "bytes":  124712,
+        "sha256":  "A971CBA21D6064C58B38C10CB04092DD4B8AB2919A9F5544E94082154F5604CE"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Serialization.Json.dll",
+        "bytes":  15696,
+        "sha256":  "473344505E44874494BD6A2964DA9860C224DFAB884A10E43992DF868B44093F"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Serialization.Primitives.dll",
+        "bytes":  38696,
+        "sha256":  "6E19E864162258EA14A5D15A0E5B6B08368AABD087D0696032338DC6BD48D71B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Runtime.Serialization.Xml.dll",
+        "bytes":  16720,
+        "sha256":  "A3D3D53A385BBE636DFF506C09D008FE0D7C53D9E1A2AD431A2B6DDD5E0200AE"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.AccessControl.dll",
+        "bytes":  227112,
+        "sha256":  "0CE0621ED9CF8FDE8AA78BE726F7E4BA7B9E321C86FF1FAA282A8E8CA1A62E86"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Claims.dll",
+        "bytes":  100136,
+        "sha256":  "29F395B2A9BD6DE2A80C38C02354B74A7CCA434DA5125FEB4A649787981B8FC6"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.Algorithms.dll",
+        "bytes":  17192,
+        "sha256":  "06A50CCCB59D64852893AF1794C71F6008B4FB83D7AB980DF4459C202F42D726"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.Cng.dll",
+        "bytes":  16168,
+        "sha256":  "F09CA990C590839DD572D52DAF96EB10472ACE1C6A18C9C1B56BF88C5A78953B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.Csp.dll",
+        "bytes":  16168,
+        "sha256":  "8F69002EB9A370C998D243F7C1427F40D40D7665C71D30F9767919B26088EF4E"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.dll",
+        "bytes":  2549544,
+        "sha256":  "637104FF4A89FA341AAD178FA4C6C85F247889D8D544F62411CC3FEBED9679B0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.Encoding.dll",
+        "bytes":  15656,
+        "sha256":  "82529D4194905C197049FB657402E50566E5566A6C62B68CFBCE1B5409F99D63"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.OpenSsl.dll",
+        "bytes":  15656,
+        "sha256":  "CFB536A8F944CF0DEA22A0F19ED618FE610CE56AD440FDE85D606E5A148683CA"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.Primitives.dll",
+        "bytes":  15696,
+        "sha256":  "A371B402DADB1F19468862D1DEBA44B5D08E0FA633904742EC5C8C1922ED6081"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Cryptography.X509Certificates.dll",
+        "bytes":  16680,
+        "sha256":  "5E0E0595A937695C7CFD3099245816177E7C2B1233742274F28C93FF8D3C7BCD"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.dll",
+        "bytes":  18216,
+        "sha256":  "0A9E88553523EBEFA42525DEF2A92577C9CC5C87B20BC6C3BCC386948388BA87"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Principal.dll",
+        "bytes":  15144,
+        "sha256":  "45A74A4B6175B9D228969592A3175A8811ABA9A74C94676AA7E46C0CDC125313"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.Principal.Windows.dll",
+        "bytes":  177960,
+        "sha256":  "B04EE5BD519137CC929B355221AF2D9649F149ACA7808768A0CB99E423FF8668"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Security.SecureString.dll",
+        "bytes":  15696,
+        "sha256":  "3D548514379830C108543F276751874CB1A6D930F9B54F80953E72E90DCA70A4"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ServiceModel.Web.dll",
+        "bytes":  16680,
+        "sha256":  "2C57D8B0F8D2A91088D1A074FB40CA8C1479A9D47071E5F99DE5C11638D2EDF7"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ServiceProcess.dll",
+        "bytes":  15656,
+        "sha256":  "5CDD7AD9ADB627D475931FE9F93D557FCD826EF393254B8A11A8C3C04B643453"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Text.Encoding.CodePages.dll",
+        "bytes":  861992,
+        "sha256":  "E1EF93444FA374EF5267D2A49751D60E6EE832DA88988D129977ADFA881F462E"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Text.Encoding.dll",
+        "bytes":  15656,
+        "sha256":  "96A719292C97522390027535DB13529173E5A3C728209C9D90DBD1B50FA71CB3"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Text.Encoding.Extensions.dll",
+        "bytes":  15696,
+        "sha256":  "81229E9C66C02DBD1CC4DE1CD58F6E6069A652E55E4375C8B18D987145479A04"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Text.Encodings.Web.dll",
+        "bytes":  124712,
+        "sha256":  "775EAB42196BF9466A69E9FC86E47B8DA620B7652AA4B8A62245449131CE885D"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Text.Json.dll",
+        "bytes":  1890088,
+        "sha256":  "6945C5FC52F811E32B13597B0D2A14D365227245E21BF7DAEBC6986F729B25FA"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Text.RegularExpressions.dll",
+        "bytes":  1034064,
+        "sha256":  "B1F6AEC1ED431CF5956D8BC870FB0D47C43455438C5C0110433FD125183F190D"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.AccessControl.dll",
+        "bytes":  75560,
+        "sha256":  "14E0EC8285100D4A3259A899D9FFA5269797E8AE2E3C9E119783ECE06EBC62C1"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Channels.dll",
+        "bytes":  157520,
+        "sha256":  "37349D0028F2DDE5DA668CF7E8BFB56FA7AB583997A44E41E4DA0B0FD00F8516"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.dll",
+        "bytes":  83752,
+        "sha256":  "96EF32E315217F24B6B701FC182CAC464966CAD1DA94DD25A3609FE2D9F5A6CA"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Overlapped.dll",
+        "bytes":  15696,
+        "sha256":  "D5E2B62198F2A9E1845A8BDD874F3F2E232EEEC7A178AD1CA2313A5D9F183AB2"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Tasks.Dataflow.dll",
+        "bytes":  472912,
+        "sha256":  "CFCFF09F4AEE061E3ECA6792908051F272C1B8B9D3D81FE1858AE047648C4EBC"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Tasks.dll",
+        "bytes":  16680,
+        "sha256":  "2830AC695731137A529B7620482499EAE9DC88730AA78B2DBBBE35E9EA6655D9"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Tasks.Extensions.dll",
+        "bytes":  15656,
+        "sha256":  "5F042ED8FCD4FCFBAB2572E5F54B0B74F959D1F52404365450F763EF5400180B"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Tasks.Parallel.dll",
+        "bytes":  132944,
+        "sha256":  "EC95052EE31AC8BC4A08241939C3D3177AC671470CAF898B8218245523CE4B21"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Thread.dll",
+        "bytes":  15656,
+        "sha256":  "40CD4539F24DE04085F5B1F6C12680E0703368A13D2EF96FE8C20C7602CCE2C2"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.ThreadPool.dll",
+        "bytes":  15656,
+        "sha256":  "8D12767F122B5DA33597AC423D19C693FE6D8615D7E1AEABA9E49E2A6BCF16C5"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Threading.Timer.dll",
+        "bytes":  15144,
+        "sha256":  "37EB792B476ADD157A6C9837CCB81D4B7FF1D2CBCECF055EC8610B57053206C6"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Transactions.dll",
+        "bytes":  16680,
+        "sha256":  "A330FD4B6173DE21CAF33C0AC79D329097791E688AB58926D2DC68341E853D17"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Transactions.Local.dll",
+        "bytes":  640808,
+        "sha256":  "F6FCA23AE3902C9E8F3B1951D26EA5D831BDF80B217D2E5A9F56DEB5B1D90229"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.ValueTuple.dll",
+        "bytes":  15656,
+        "sha256":  "069F72A5D77EF21FF8D60C5B63C7E894999EBECE4C8CFAFC697AAA3BDC5605AE"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Web.dll",
+        "bytes":  15184,
+        "sha256":  "934C6EF3F2BC8959ABA62CED6D1CEF069D565210E65BF59B5980E7E39571528E"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Web.HttpUtility.dll",
+        "bytes":  63272,
+        "sha256":  "1F8BF172CD56387C0C348BC65CF6A31548324DA7FF7347D5190D84E9FF82A475"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Windows.dll",
+        "bytes":  15696,
+        "sha256":  "FFD590EE80328CF902B4D66A8DB1B2D34B7AD5BA8FDB93DB51C4DC0C5829439A"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.dll",
+        "bytes":  23336,
+        "sha256":  "60EEBCB2939FEB3C23686C067A9F49A93020488C2594357670AAC4E568D380B0"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.Linq.dll",
+        "bytes":  15696,
+        "sha256":  "519999617D619D88F5489021BA690277A2648BC6B344E1649BE679F0E51E6CCB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.ReaderWriter.dll",
+        "bytes":  21840,
+        "sha256":  "CDD1A8424361A33498E2A69051A7330ED356927F675B917422861138C99F6406"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.Serialization.dll",
+        "bytes":  16208,
+        "sha256":  "B2CF0F39E9E2D0867A899A7FD4A889EE6AD3CC6ED48A7079B28502D7C808A73E"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.XDocument.dll",
+        "bytes":  15656,
+        "sha256":  "BC290C6ECF7FF713A492B48F9D507CBFE85A50CCD00E187E68F422D75804EFEC"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.XmlDocument.dll",
+        "bytes":  15696,
+        "sha256":  "4D07558FB3573E4A0D91B928361060D1FE7162B9017E17E759AD77C8FB6986CA"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.XmlSerializer.dll",
+        "bytes":  17704,
+        "sha256":  "2C7CFC2A8EC748D920753B7328C681F56A65608D029F36698B0AF79945C0C253"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.XPath.dll",
+        "bytes":  15656,
+        "sha256":  "2F25F882A1816E7A6BB0445562A4B7CC1653B25C0697B184AB6808B22DAA49BB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/System.Xml.XPath.XDocument.dll",
+        "bytes":  30504,
+        "sha256":  "DD5EE3B63637B62A7808F4E8B8E6299258C0B043D8D103FF1F0B7D31230B7DCB"
+    },
+    {
+        "path":  "shared/Microsoft.NETCore.App/10.0.10/WindowsBase.dll",
+        "bytes":  16168,
+        "sha256":  "40919153C0D41DB63182208F07CEB2CDD7A5EAA1231BFAE318F64FAD929D6646"
+    },
+    {
+        "path":  "THIRD-PARTY-NOTICES.TXT",
+        "bytes":  78041,
+        "sha256":  "6D15E10A101C6BFFF2AB4429ED061BF76C456FC4B23AD6B03E0D0F8377148A21"
+    }
+]

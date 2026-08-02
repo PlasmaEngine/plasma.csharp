@@ -1,0 +1,13 @@
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ManagedM0Game.deps.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ManagedM0Game.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ManagedM0Game.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.csproj.AssemblyReference.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.GeneratedMSBuildEditorConfig.editorconfig
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.AssemblyInfoInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.AssemblyInfo.cs
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.csproj.CoreCompileInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.M.A23AEDA7.Up2Date
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\refint\Plasma.ManagedM0Game.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\ref\Plasma.ManagedM0Game.dll

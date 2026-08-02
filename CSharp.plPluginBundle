@@ -1,0 +1,23 @@
+PluginInfo
+{
+  string %DisplayName{"C#"}
+  string %Category{"Scripting"}
+  string %MinEngineVersion{"0.7.0"}
+  string %MaxEngineVersion{"0.7.0"}
+  string %Description{"Adds hosted .NET 10 C# scripting support."}
+  string %EditorPlugins{"plEditorPluginCSharp"}
+  string %EditorEnginePlugins{}
+  string %RuntimePlugins{"plCSharpPlugin"}
+  string %PackageDependencies{
+    "nethost.dll",
+    "CSharp/Plasma.ManagedHost.dll",
+    "CSharp/Plasma.ManagedHost.deps.json",
+    "CSharp/Plasma.ManagedHost.runtimeconfig.json",
+    "CSharp/Plasma.ScriptCore.dll",
+    "DotNet/*"
+  }
+  string %RequiredPlugins{}
+  string %ExclusiveFeatures{}
+  string %EnabledInTemplates{}
+  string %PlasmaBuildTargetName{"CSharpPlugin"}
+}

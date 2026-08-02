@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>Plasma.ManagedM0Game</AssemblyName>
+    <RootNamespace>Plasma.ManagedM0Game</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="PlasmaBindings.json" />
+    <ProjectReference Include="..\Plasma.ScriptCore\Plasma.ScriptCore.csproj" />
+    <ProjectReference Include="..\Plasma.Engine.Generator\Plasma.Engine.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

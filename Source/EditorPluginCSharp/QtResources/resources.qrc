@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="AssetIcons">
+    <file>CSharp.svg</file>
+  </qresource>
+</RCC>

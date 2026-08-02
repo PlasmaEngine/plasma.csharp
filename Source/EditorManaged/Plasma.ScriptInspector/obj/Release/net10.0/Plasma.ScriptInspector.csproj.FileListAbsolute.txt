@@ -1,0 +1,16 @@
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.GeneratedMSBuildEditorConfig.editorconfig
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.AssemblyInfoInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.AssemblyInfo.cs
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.csproj.CoreCompileInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.exe
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.deps.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.runtimeconfig.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.csproj.AssemblyReference.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.S.DB620C03.Up2Date
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\refint\Plasma.ScriptInspector.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.genruntimeconfig.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\ref\Plasma.ScriptInspector.dll

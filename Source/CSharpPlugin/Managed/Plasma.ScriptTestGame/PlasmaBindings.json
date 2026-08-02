@@ -1,0 +1,56 @@
+{
+  "manifestVersion": 1,
+  "canonicalIdentityVersion": 1,
+  "schemaHash": "0000000000000001",
+  "types": [
+    {
+      "id": "0000000000000001",
+      "canonicalIdentity": "type:plMsgBeacon",
+      "nativeName": "plMsgBeacon",
+      "pluginName": "Test",
+      "parentNativeName": "plMessage",
+      "scriptExtensionName": "",
+      "flags": 8,
+      "variantType": 0,
+      "typeVersion": 1,
+      "typeSize": 1,
+      "canAllocate": true,
+      "hidden": false,
+      "excludedFromScript": false,
+      "attributes": []
+    }
+  ],
+  "properties": [
+    {
+      "id": "0000000000000010",
+      "canonicalIdentity": "property:plMsgBeacon.Enabled",
+      "declaringTypeId": "0000000000000001",
+      "declaringTypeName": "plMsgBeacon",
+      "nativeName": "Enabled",
+      "category": 1,
+      "flags": 1,
+      "valueTypeId": "0000000000000000",
+      "valueTypeName": "bool",
+      "hasDefaultValue": false,
+      "attributes": []
+    }
+  ],
+  "functions": [],
+  "messages": [
+    {
+      "id": "0000000000000020",
+      "canonicalIdentity": "message:plMsgBeacon",
+      "typeId": "0000000000000001",
+      "typeName": "plMsgBeacon",
+      "parentTypeId": "0000000000000000",
+      "parentTypeName": "plMessage",
+      "properties": [
+        "0000000000000010"
+      ],
+      "writableProperties": [
+        "0000000000000010"
+      ]
+    }
+  ],
+  "diagnostics": []
+}
