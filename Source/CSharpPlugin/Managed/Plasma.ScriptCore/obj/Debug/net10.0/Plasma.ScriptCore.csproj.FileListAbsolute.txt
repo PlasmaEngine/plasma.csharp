@@ -1,0 +1,13 @@
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Debug\net10.0\Plasma.ScriptCore.deps.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Debug\net10.0\Plasma.ScriptCore.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Debug\net10.0\Plasma.ScriptCore.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Debug\net10.0\Plasma.ScriptCore.xml
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.GeneratedMSBuildEditorConfig.editorconfig
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.AssemblyInfoInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.AssemblyInfo.cs
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.csproj.CoreCompileInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\refint\Plasma.ScriptCore.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.xml
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\ref\Plasma.ScriptCore.dll

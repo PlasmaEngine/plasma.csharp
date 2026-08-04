@@ -14,3 +14,4 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInsp
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.genruntimeconfig.cache
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\ref\Plasma.ScriptInspector.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.sourcelink.json

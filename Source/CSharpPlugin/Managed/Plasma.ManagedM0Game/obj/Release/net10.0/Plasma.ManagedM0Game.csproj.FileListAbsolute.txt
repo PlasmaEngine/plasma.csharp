@@ -11,3 +11,4 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Man
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\refint\Plasma.ManagedM0Game.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\ref\Plasma.ManagedM0Game.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedM0Game\obj\Release\net10.0\Plasma.ManagedM0Game.sourcelink.json

@@ -15,6 +15,7 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Scr
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Release\net10.0\Plasma.ScriptCore.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Release\net10.0\Plasma.ScriptCore.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Release\net10.0\Plasma.ScriptCore.xml
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Release\net10.0\Plasma.ScriptCore.sourcelink.json
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ScriptCore.deps.json
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ScriptCore.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ScriptCore.pdb

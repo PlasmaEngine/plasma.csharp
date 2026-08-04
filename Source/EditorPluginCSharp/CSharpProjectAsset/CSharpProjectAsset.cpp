@@ -216,6 +216,98 @@ namespace
     return plStatus(PL_SUCCESS);
   }
 
+  /// \brief Swaps the old ProjectReference pair for references to the shipped assemblies.
+  ///
+  /// Projects created before this plugin became a package point at csproj files under the engine's
+  /// Code/ tree. That directory does not exist in a package install or in any launcher-installed
+  /// SDK, so every script fails to resolve the Plasma namespace. There is no managed source to build
+  /// against any more - the assemblies ship built - so the references change kind, not just path.
+  ///
+  /// Done by line rather than by substring: the old entries carry absolute paths that differ per
+  /// machine, and one of them spans four lines, so there is no stable string to swap.
+  bool MigrateManagedReferences(plStringBuilder& ref_contents, plStringView sDocumentDirectory)
+  {
+    if (ref_contents.FindSubString("Plasma.ScriptCore.csproj") == nullptr &&
+        ref_contents.FindSubString("Plasma.Engine.Generator.csproj") == nullptr)
+    {
+      return false;
+    }
+
+    plStringBuilder managedRoot = plCSharpEditorPaths::FindPayloadRoot();
+    managedRoot.AppendPath("CSharp");
+
+    plStringBuilder generator(managedRoot);
+    generator.AppendPath("M0Game/Plasma.Engine.Generator.dll");
+
+    auto relativise = [sDocumentDirectory](plStringBuilder& ref_path)
+    {
+      plStringBuilder sRel = ref_path;
+      if (sRel.MakeRelativeTo(sDocumentDirectory).Succeeded())
+        ref_path = sRel;
+
+      ref_path.MakeCleanPath();
+      ref_path.ReplaceAll("\\", "/");
+    };
+
+    relativise(managedRoot);
+    relativise(generator);
+
+    plHybridArray<plStringView, 64> lines;
+    ref_contents.Split(true, lines, "\n");
+
+    plStringBuilder out;
+    bool bInserted = false;
+    bool bSkippingElement = false;
+
+    for (plStringView line : lines)
+    {
+      if (bSkippingElement)
+      {
+        // The generator reference is written across four lines; swallow to its closing tag.
+        if (line.FindSubString("/>") != nullptr)
+          bSkippingElement = false;
+
+        continue;
+      }
+
+      const bool bManaged = line.FindSubString("<ProjectReference") != nullptr &&
+                            (line.FindSubString("Plasma.ScriptCore") != nullptr ||
+                              line.FindSubString("Plasma.Engine.Generator") != nullptr);
+
+      if (bManaged)
+      {
+        if (!bInserted)
+        {
+          out.Append("    <Reference Include=\"Plasma.ScriptCore\">\n");
+          out.Append("      <HintPath>", managedRoot, "/Plasma.ScriptCore.dll</HintPath>\n");
+          out.Append("      <Private>false</Private>\n");
+          out.Append("    </Reference>\n");
+          out.Append("    <Analyzer Include=\"", generator, "\" />\n");
+          bInserted = true;
+        }
+
+        if (line.FindSubString("/>") == nullptr)
+          bSkippingElement = true;
+
+        continue;
+      }
+
+      out.Append(line);
+      out.Append("\n");
+    }
+
+    if (!bInserted)
+      return false;
+
+    // Split(true, ...) yields a trailing empty piece for the final newline, which the loop turns
+    // back into one; anything more would grow the file a line per migration.
+    while (out.EndsWith("\n\n"))
+      out.Shrink(0, 1);
+
+    ref_contents = out;
+    return true;
+  }
+
   plStatus UpdateGeneratedProjectItemMode(plStringView sProjectFile)
   {
     plFileReader reader;
@@ -226,13 +318,16 @@ namespace
     contents.ReadAll(reader);
     reader.Close();
 
-    if (contents.FindSubString("<PlasmaSourceRoot>") == nullptr ||
-        contents.FindSubString("Plasma.Engine.Generator.csproj") == nullptr)
-    {
+    if (contents.FindSubString("<PlasmaSourceRoot>") == nullptr)
       return plStatus(PL_SUCCESS);
-    }
 
-    bool bChanged = false;
+    plStringBuilder documentDirectory = sProjectFile;
+    documentDirectory.PathParentDirectory();
+
+    bool bChanged = MigrateManagedReferences(contents, documentDirectory);
+
+    if (contents.FindSubString("Plasma.Engine.Generator.csproj") == nullptr && !bChanged)
+      return plStatus(PL_SUCCESS);
     if (contents.FindSubString("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>") != nullptr)
     {
       contents.ReplaceAll(
@@ -932,6 +1027,16 @@ plStatus plCSharpProjectAssetDocument::RunProjectBuild(
   plStringView sProjectFile, plStringView sBindingManifest,
   plStringView sOutputDirectory, plStringBuilder& out_sDiagnostics) const
 {
+  // Every build funnels through here, whichever way it was started. The project file is generated
+  // once and then kept, so one written before this plugin became a package still references the
+  // engine's old Code/ tree and has to be brought forward before dotnet sees it. Doing it on the
+  // IDE-open path alone left anyone who only ever presses Build with a project that could not
+  // resolve a single Plasma type.
+  if (const plStatus migrated = UpdateGeneratedProjectItemMode(sProjectFile); migrated.Failed())
+  {
+    return migrated;
+  }
+
   plProcessOptions options;
   options.m_sProcess = "dotnet";
   options.AddArgument("build");
@@ -1275,13 +1380,28 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
   plStringBuilder sourceRoot(documentDirectory);
   PL_SUCCEED_OR_RETURN(plOSFile::CreateDirectoryStructure(sourceRoot));
 
-  plStringBuilder managedSdkRoot(plFileSystem::GetSdkRootDirectory());
-  managedSdkRoot.AppendPath("Code/EnginePlugins/Scripting/CSharpPlugin/Managed");
-  plStringBuilder relativeManagedSdkRoot = managedSdkRoot;
-  if (relativeManagedSdkRoot.MakeRelativeTo(documentDirectory).Failed())
-    relativeManagedSdkRoot = managedSdkRoot;
-  relativeManagedSdkRoot.MakeCleanPath();
-  relativeManagedSdkRoot.ReplaceAll("\\", "/");
+  // The managed assemblies ship built, beside the plugin - there is no managed source to build
+  // against. Referencing csproj files under the engine's Code/ tree only ever worked while this
+  // plugin lived in the engine; from a package, and from any launcher-installed SDK, that directory
+  // does not exist and every script fails to resolve the Plasma namespace.
+  plStringBuilder managedRoot = plCSharpEditorPaths::FindPayloadRoot();
+  managedRoot.AppendPath("CSharp");
+
+  plStringBuilder relativeManagedRoot = managedRoot;
+  if (relativeManagedRoot.MakeRelativeTo(documentDirectory).Failed())
+    relativeManagedRoot = managedRoot;
+  relativeManagedRoot.MakeCleanPath();
+  relativeManagedRoot.ReplaceAll("\\", "/");
+
+  // The source generator is shipped alongside the game assemblies rather than in the payload root.
+  plStringBuilder generatorPath(managedRoot);
+  generatorPath.AppendPath("M0Game/Plasma.Engine.Generator.dll");
+
+  plStringBuilder relativeGenerator = generatorPath;
+  if (relativeGenerator.MakeRelativeTo(documentDirectory).Failed())
+    relativeGenerator = generatorPath;
+  relativeGenerator.MakeCleanPath();
+  relativeGenerator.ReplaceAll("\\", "/");
 
   plStringBuilder projectFile(documentDirectory, "/", projectName, ".csproj");
   plStringBuilder projectXml;
@@ -1303,13 +1423,13 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
   projectXml.Append("    <Compile Include=\"**/*.cs\" Exclude=\"**/.git/**/*.cs;**/AssetCache/**/*.cs;**/bin/**/*.cs;**/Intermediate/**/*.cs;**/obj/**/*.cs\" />\n");
   projectXml.Append("    <CompilerVisibleProperty Include=\"PlasmaSourceRoot\" />\n");
   projectXml.Append("    <AdditionalFiles Include=\"$(PlasmaBindingManifest)\" />\n");
-  projectXml.Append("    <ProjectReference Include=\"", relativeManagedSdkRoot,
-    "/Plasma.ScriptCore/Plasma.ScriptCore.csproj\" AdditionalProperties=\"Configuration=Development\" />\n");
-  projectXml.Append("    <ProjectReference Include=\"", relativeManagedSdkRoot,
-    "/Plasma.Engine.Generator/Plasma.Engine.Generator.csproj\"\n");
-  projectXml.Append("                      AdditionalProperties=\"Configuration=Development\"\n");
-  projectXml.Append("                      OutputItemType=\"Analyzer\"\n");
-  projectXml.Append("                      ReferenceOutputAssembly=\"false\" />\n");
+  // Private, so the script assembly does not re-export the engine API to anything referencing it.
+  // The .xml beside the DLL gives IntelliSense the doc comments without any further wiring.
+  projectXml.Append("    <Reference Include=\"Plasma.ScriptCore\">\n");
+  projectXml.Append("      <HintPath>", relativeManagedRoot, "/Plasma.ScriptCore.dll</HintPath>\n");
+  projectXml.Append("      <Private>false</Private>\n");
+  projectXml.Append("    </Reference>\n");
+  projectXml.Append("    <Analyzer Include=\"", relativeGenerator, "\" />\n");
   projectXml.Append("  </ItemGroup>\n");
   projectXml.Append("</Project>\n");
 

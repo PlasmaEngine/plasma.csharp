@@ -8,3 +8,4 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Eng
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Release\netstandard2.0\Plasma.Engine.Generator.csproj.CoreCompileInputs.cache
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Release\netstandard2.0\Plasma.Engine.Generator.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Release\netstandard2.0\Plasma.Engine.Generator.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Release\netstandard2.0\Plasma.Engine.Generator.sourcelink.json

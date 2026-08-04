@@ -1,0 +1,10 @@
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\bin\Development\netstandard2.0\Plasma.Engine.Generator.deps.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\bin\Development\netstandard2.0\Plasma.Engine.Generator.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\bin\Development\netstandard2.0\Plasma.Engine.Generator.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.csproj.AssemblyReference.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.GeneratedMSBuildEditorConfig.editorconfig
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.AssemblyInfoInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.AssemblyInfo.cs
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.csproj.CoreCompileInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Engine.Generator\obj\Development\netstandard2.0\Plasma.Engine.Generator.pdb

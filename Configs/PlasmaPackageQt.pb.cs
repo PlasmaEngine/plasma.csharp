@@ -22,27 +22,169 @@ public static class PlasmaPackageQt
     // Must match the Qt the SDK was built with: moc output is tied to the Qt version that consumes it.
     private const string QtVersionDirectory = "Qt6-6.11.0-vs144-x64";
 
+    private const string QtDownloadUrl =
+        "https://github.com/PlasmaEngine/thirdparty/releases/download/Qt6-6.11.0-vs144-x64/Qt6-6.11.0-vs144-x64.7z";
+
+    private static string s_ResolvedQtPath;
+
+    /// \brief Where a downloaded Qt is kept so every engine and package on this machine shares one copy.
+    ///
+    /// Deliberately outside both the SDK and the package: an SDK installed by the launcher is
+    /// replaced wholesale on upgrade, and a package is a git checkout that should not gain a
+    /// half-gigabyte of Qt. `PLASMA_THIRDPARTY_DIR` overrides it for CI, where a writable, pre-warmed
+    /// cache is usually mounted somewhere specific.
+    private static string SharedThirdPartyRoot
+    {
+        get
+        {
+            var custom = Environment.GetEnvironmentVariable("PLASMA_THIRDPARTY_DIR");
+            if (!string.IsNullOrWhiteSpace(custom))
+            {
+                return custom;
+            }
+
+            // LocalApplicationData rather than roaming: this is a large binary cache, and a roaming
+            // profile would try to sync it.
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PlasmaBuild", "ThirdParty");
+        }
+    }
+
+    private static bool HasQt(string dir)
+    {
+        return !string.IsNullOrWhiteSpace(dir) && File.Exists(Path.Combine(dir, "bin", "moc.exe"));
+    }
+
+    /// \brief Qt for code generation, downloaded into the shared cache if it is not already somewhere.
+    ///
+    /// Order: QTDIR, then the SDK's own copy (a source-built engine already has one, and reusing it
+    /// avoids a second download), then the shared cache, then fetch. Only ever reached when a module
+    /// actually asks for Qt code generation, so a package with no editor plugin never triggers it.
     public static string QtPath
     {
         get
         {
+            if (s_ResolvedQtPath != null)
+            {
+                return s_ResolvedQtPath;
+            }
+
             var qtDir = Environment.GetEnvironmentVariable("QTDIR");
             if (!string.IsNullOrWhiteSpace(qtDir))
             {
-                return qtDir;
+                s_ResolvedQtPath = qtDir;
+                return s_ResolvedQtPath;
             }
 
             var fromSdk = Path.Combine(PlasmaPackageSdk.Root, "Intermediate", "PlasmaBuild", "ThirdParty", QtVersionDirectory);
-
-            if (!File.Exists(Path.Combine(fromSdk, "bin", "moc.exe")))
+            if (HasQt(fromSdk))
             {
-                throw new DirectoryNotFoundException(
-                    $"No Qt found for package code generation. Looked in '{fromSdk}'. Build the engine once so the " +
-                    "SDK fetches Qt, or set QTDIR.");
+                s_ResolvedQtPath = fromSdk;
+                return s_ResolvedQtPath;
             }
 
-            return fromSdk;
+            var shared = Path.Combine(SharedThirdPartyRoot, QtVersionDirectory);
+            if (HasQt(shared))
+            {
+                s_ResolvedQtPath = shared;
+                return s_ResolvedQtPath;
+            }
+
+            if (string.Equals(Environment.GetEnvironmentVariable("PLASMA_NO_DOWNLOAD"), "1", StringComparison.Ordinal))
+            {
+                throw new DirectoryNotFoundException(
+                    $"No Qt found for package code generation, and PLASMA_NO_DOWNLOAD is set. Looked in '{fromSdk}' " +
+                    $"and '{shared}'. Set QTDIR, or clear PLASMA_NO_DOWNLOAD to fetch it.");
+            }
+
+            DownloadQt(shared);
+
+            if (!HasQt(shared))
+            {
+                throw new DirectoryNotFoundException(
+                    $"Qt was downloaded but '{Path.Combine(shared, "bin", "moc.exe")}' is still missing - the archive " +
+                    "layout is not what this build expects.");
+            }
+
+            s_ResolvedQtPath = shared;
+            return s_ResolvedQtPath;
         }
+    }
+
+    /// \brief Fetches and extracts the shared Qt. Mirrors what the engine's own qt.module.cs does.
+    private static void DownloadQt(string targetDirectory)
+    {
+        var root = SharedThirdPartyRoot;
+        Directory.CreateDirectory(root);
+
+        var archivePath = Path.Combine(root, QtVersionDirectory + ".7z");
+        var extractMarker = targetDirectory + ".extracted";
+
+        if (File.Exists(extractMarker) && HasQt(targetDirectory))
+        {
+            return;
+        }
+
+        // 7z ships with the SDK, including a launcher-installed one, so nothing else has to be present.
+        var sevenZip = Path.Combine(PlasmaPackageSdk.Root, "Data", "Tools", "Precompiled", "7z.exe");
+        if (!File.Exists(sevenZip))
+        {
+            throw new FileNotFoundException(
+                $"Qt has to be downloaded, but 7z.exe is missing from the SDK at '{sevenZip}'. Set QTDIR to a Qt "
+                + "install instead.", sevenZip);
+        }
+
+        if (!File.Exists(archivePath))
+        {
+            Console.WriteLine($"Downloading Qt to the shared cache at '{root}' - this happens once per machine.");
+
+            // Download beside the final name and move, so an interrupted transfer is not mistaken for
+            // a complete archive on the next build.
+            var partial = archivePath + ".partial";
+
+            using (var httpClient = new System.Net.Http.HttpClient())
+            {
+                httpClient.Timeout = TimeSpan.FromMinutes(30);
+
+                using var response = httpClient
+                    .GetAsync(QtDownloadUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead)
+                    .GetAwaiter().GetResult();
+
+                response.EnsureSuccessStatusCode();
+
+                using var source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                using var target = File.Create(partial);
+                source.CopyTo(target);
+            }
+
+            File.Move(partial, archivePath, true);
+        }
+
+        Console.WriteLine($"Extracting Qt into '{targetDirectory}'.");
+
+        var startInfo = new ProcessStartInfo(sevenZip)
+        {
+            Arguments = $"x \"{archivePath}\" -o\"{root}\" -y",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        using (var process = Process.Start(startInfo))
+        {
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"7z extraction of Qt failed with exit code {process.ExitCode}.\n{stdout}\n{stderr}");
+            }
+        }
+
+        File.WriteAllText(extractMarker, QtDownloadUrl);
     }
 
     /// \brief Root the generated sources are included from, e.g. <MyModule/PlasmaBuildQtGenerated.inl>.

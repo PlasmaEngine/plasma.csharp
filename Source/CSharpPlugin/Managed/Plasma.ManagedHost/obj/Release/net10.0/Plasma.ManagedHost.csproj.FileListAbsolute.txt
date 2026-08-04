@@ -13,3 +13,4 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Man
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedHost\obj\Release\net10.0\Plasma.ManagedHost.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedHost\obj\Release\net10.0\Plasma.ManagedHost.genruntimeconfig.cache
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedHost\obj\Release\net10.0\ref\Plasma.ManagedHost.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ManagedHost\obj\Release\net10.0\Plasma.ManagedHost.sourcelink.json

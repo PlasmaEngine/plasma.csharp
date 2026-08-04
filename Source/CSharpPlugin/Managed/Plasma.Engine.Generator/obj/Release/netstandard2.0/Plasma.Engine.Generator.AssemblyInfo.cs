@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Plasma.Engine.Generator")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7be17e1de890ff587d3cef03e555a3051c78d71e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b11371ea1eb043499ba376af72d69be93c419063")]
 [assembly: System.Reflection.AssemblyProductAttribute("Plasma.Engine.Generator")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Plasma.Engine.Generator")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
