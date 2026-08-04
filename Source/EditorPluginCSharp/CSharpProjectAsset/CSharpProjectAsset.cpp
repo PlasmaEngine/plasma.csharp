@@ -326,6 +326,18 @@ namespace
 
     bool bChanged = MigrateManagedReferences(contents, documentDirectory);
 
+    // Projects generated before packages could be installed into <project>/Plugins compile the
+    // whole of that directory, including the source checkout of any package built locally.
+    if (contents.FindSubString("**/Plugins/**/*.cs") == nullptr)
+    {
+      const plUInt32 uiBefore = contents.GetElementCount();
+
+      contents.ReplaceAll("**/obj/**/*.cs\" />", "**/obj/**/*.cs;**/Plugins/**/*.cs\" />");
+
+      if (contents.GetElementCount() != uiBefore)
+        bChanged = true;
+    }
+
     if (contents.FindSubString("Plasma.Engine.Generator.csproj") == nullptr && !bChanged)
       return plStatus(PL_SUCCESS);
     if (contents.FindSubString("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>") != nullptr)
@@ -556,7 +568,12 @@ namespace
            clean.FindSubString("/bin/") != nullptr ||
            clean.FindSubString("/obj/") != nullptr ||
            clean.FindSubString("/intermediate/") != nullptr ||
-           clean.FindSubString("/.git/") != nullptr;
+           clean.FindSubString("/.git/") != nullptr ||
+           // Installed packages live under <project>/Plugins, and one built from source keeps its
+           // whole checkout in Plugins/.source. That is somebody else's code: compiling it into the
+           // game assembly duplicates every type the package already ships, and indexing it turns
+           // hundreds of plugin files into project script assets.
+           clean.FindSubString("/plugins/") != nullptr;
   }
 
   plResult ParseSigned(plStringView sValue, plInt64& out_iValue)
@@ -1420,7 +1437,11 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
   projectXml.Append("    <RootNamespace>Game.Scripts</RootNamespace>\n");
   projectXml.Append("  </PropertyGroup>\n\n");
   projectXml.Append("  <ItemGroup>\n");
-  projectXml.Append("    <Compile Include=\"**/*.cs\" Exclude=\"**/.git/**/*.cs;**/AssetCache/**/*.cs;**/bin/**/*.cs;**/Intermediate/**/*.cs;**/obj/**/*.cs\" />\n");
+  // Plugins/ holds installed packages, and a package built from source keeps its entire checkout in
+  // Plugins/.source. Compiling that into the game assembly duplicates every type the package already
+  // ships as a reference, which fails in ways that point at the game's own scripts.
+  projectXml.Append("    <Compile Include=\"**/*.cs\" Exclude=\"**/.git/**/*.cs;**/AssetCache/**/*.cs;**/bin/**/*.cs;"
+                    "**/Intermediate/**/*.cs;**/obj/**/*.cs;**/Plugins/**/*.cs\" />\n");
   projectXml.Append("    <CompilerVisibleProperty Include=\"PlasmaSourceRoot\" />\n");
   projectXml.Append("    <AdditionalFiles Include=\"$(PlasmaBindingManifest)\" />\n");
   // Private, so the script assembly does not re-export the engine API to anything referencing it.

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Plasma.ManagedM0Game")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+908dc71c97d141c4a8c28f971b52019a3f69dbc4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a149a107a9580d806b0a18a33be355902fa97982")]
 [assembly: System.Reflection.AssemblyProductAttribute("Plasma.ManagedM0Game")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Plasma.ManagedM0Game")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
