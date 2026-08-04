@@ -1813,10 +1813,24 @@ void plCSharpProjectAssetDocument::UpdateAssetDocumentInfo(plAssetDocumentInfo* 
 
   if (plToolsProject::IsProjectOpen())
   {
-    plStringBuilder pluginSelection = plToolsProject::GetSingleton()->GetProjectDirectory();
-    pluginSelection.AppendPath("Editor/PluginSelection.ddl");
-    pluginSelection.MakeCleanPath();
-    pInfo->m_TransformDependencies.Insert(pluginSelection);
+    // Which plugins a project uses decides the reflected API the bindings expose, so a change there
+    // has to force a rebuild. Packages.ddl is where that lives now; PluginSelection.ddl is the
+    // pre-package file, still present in a converted project and absent from a new one.
+    //
+    // Only whichever actually exists is registered. A transform dependency on a missing file puts
+    // the asset permanently in MissingTransformDependency, which reads as "can't transform" with no
+    // hint that the blocker is a file the project was never going to have.
+    const plStringView candidates[] = {"Editor/Packages.ddl", "Editor/PluginSelection.ddl"};
+
+    for (plStringView sCandidate : candidates)
+    {
+      plStringBuilder sPath = plToolsProject::GetSingleton()->GetProjectDirectory();
+      sPath.AppendPath(sCandidate);
+      sPath.MakeCleanPath();
+
+      if (plOSFile::ExistsFile(sPath))
+        pInfo->m_TransformDependencies.Insert(sPath);
+    }
   }
 
   plStringBuilder projectFile;

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Plasma.ScriptInspector")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b11371ea1eb043499ba376af72d69be93c419063")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+908dc71c97d141c4a8c28f971b52019a3f69dbc4")]
 [assembly: System.Reflection.AssemblyProductAttribute("Plasma.ScriptInspector")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Plasma.ScriptInspector")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
