@@ -102,6 +102,8 @@ public static unsafe class NativeBridge
         s_configured = true;
         s_worldApi = default;
         s_worldApiResolved = false;
+        DebugApi.Reset();
+        ConsoleApi.Reset();
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]
@@ -111,6 +113,8 @@ public static unsafe class NativeBridge
         s_api = default;
         s_worldApi = default;
         s_worldApiResolved = false;
+        DebugApi.Reset();
+        ConsoleApi.Reset();
     }
 
     public static NativeCallStatus ValidateObject(NativeObject value, NativeObjectKind expectedKind)
@@ -249,6 +253,42 @@ public static unsafe class NativeBridge
             routing);
     }
 
+    /// <summary>
+    /// Resolves an optional native extension table by name. Returns null when the host does not
+    /// provide it, which is a normal answer rather than an error: extension tables exist so the
+    /// frozen host ABI does not have to grow every time a capability is added.
+    /// </summary>
+    internal static T? QueryExtension<T>(string name, uint minimumVersion)
+        where T : unmanaged
+    {
+        EnsureConfigured();
+        if (s_api.QueryExtension == null)
+        {
+            return null;
+        }
+
+        byte[] extensionName = Encoding.UTF8.GetBytes(name);
+        fixed (byte* extensionData = extensionName)
+        {
+            void* extensionPointer = null;
+            NativeCallStatus status = s_api.QueryExtension(
+                new Utf8Span
+                {
+                    Data = extensionData,
+                    Length = checked((uint)extensionName.Length),
+                },
+                minimumVersion,
+                &extensionPointer);
+
+            if (status != NativeCallStatus.Success || extensionPointer is null)
+            {
+                return null;
+            }
+
+            return *(T*)extensionPointer;
+        }
+    }
+
     private static bool TryGetWorldApi(out WorldApiV1 worldApi)
     {
         lock (s_extensionLock)
@@ -256,28 +296,13 @@ public static unsafe class NativeBridge
             if (!s_worldApiResolved)
             {
                 s_worldApiResolved = true;
-                byte[] extensionName = Encoding.UTF8.GetBytes("Plasma.World");
-                fixed (byte* extensionData = extensionName)
+
+                if (QueryExtension<WorldApiV1>("Plasma.World", 2) is { } candidate &&
+                    candidate.Size >= (uint)sizeof(WorldApiV1) &&
+                    candidate.Version == 2 &&
+                    candidate.SendMessage != null)
                 {
-                    void* extensionPointer = null;
-                    NativeCallStatus status = s_api.QueryExtension(
-                        new Utf8Span
-                        {
-                            Data = extensionData,
-                            Length = checked((uint)extensionName.Length),
-                        },
-                        2,
-                        &extensionPointer);
-                    if (status == NativeCallStatus.Success && extensionPointer is not null)
-                    {
-                        WorldApiV1 candidate = *(WorldApiV1*)extensionPointer;
-                        if (candidate.Size >= (uint)sizeof(WorldApiV1) &&
-                            candidate.Version == 2 &&
-                            candidate.SendMessage != null)
-                        {
-                            s_worldApi = candidate;
-                        }
-                    }
+                    s_worldApi = candidate;
                 }
             }
 
@@ -307,14 +332,6 @@ public static unsafe class NativeBridge
         public ulong Value;
         public ulong Generation;
         public uint Kind;
-        public uint Reserved;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 8)]
-    private struct Utf8Span
-    {
-        public byte* Data;
-        public uint Length;
         public uint Reserved;
     }
 

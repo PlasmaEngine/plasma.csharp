@@ -34,6 +34,12 @@ public:
   plDynamicArray<plString> m_LastGoodFiles;
   plString m_sLastGoodEntryAssembly;
   plUInt64 m_uiLastGoodBindingSchemaHash = 0;
+  /// Fingerprint of the .csproj that produced m_sLastGoodEntryAssembly. While it matches, the target
+  /// assembly name is reused instead of asking MSBuild for it in a second process.
+  plUInt64 m_uiLastGoodProjectFileHash = 0;
+  /// Fingerprint of the assembly m_sLastGoodDescriptorJson was extracted from. While it matches, the
+  /// descriptor inspector does not have to run.
+  plUInt64 m_uiLastGoodEntryAssemblyHash = 0;
   plString m_sBuildDiagnostics;
 };
 
@@ -79,8 +85,11 @@ private:
   plStatus ExportBindingManifest(plStringView sBindingManifest, plUInt64& out_uiSchemaHash) const;
   plStatus RunProjectBuild(plStringView sProjectFile, plStringView sBindingManifest,
     plStringView sOutputDirectory, plStringBuilder& out_sDiagnostics) const;
-  plStatus FindEntryAssembly(
-    plStringView sProjectFile, plStringView sOutputDirectory, plStringBuilder& out_sEntryAssembly) const;
+  /// Resolves the built assembly. \a sCachedTargetFileName short-circuits the MSBuild property query
+  /// when the project file has not changed since it produced that name.
+  plStatus FindEntryAssembly(plStringView sProjectFile, plStringView sOutputDirectory,
+    plStringView sCachedTargetFileName, plStringBuilder& out_sEntryAssembly) const;
+  plStatus HashFileContents(plStringView sFile, plUInt64& out_uiHash) const;
   plStatus RunInspector(plStringView sEntryAssembly, plStringView sDescriptorFile, plStringBuilder& inout_sDiagnostics) const;
   plStatus GatherBuildFiles(plStringView sOutputDirectory, plDynamicArray<BuildFile>& out_files, plDynamicArray<plString>& out_relativeFiles) const;
   plStatus GatherSourceFiles(plStringView sSourceRoot, plDynamicArray<plString>& out_relativeSources) const;
@@ -94,7 +103,7 @@ private:
   plUInt64 ComputeTransformSettingsHash() const;
   plStatus UpdateBuildCache(plObjectCommandAccessor& accessor, plStringView sDescriptorJson, const plDynamicArray<plString>& sourceFiles,
     const plDynamicArray<plUInt64>& sourceHashes, const plDynamicArray<plString>& buildFiles, plStringView sEntryAssembly,
-    plUInt64 uiSchemaHash, plStringView sDiagnostics);
+    plUInt64 uiSchemaHash, plUInt64 uiProjectFileHash, plUInt64 uiEntryAssemblyHash, plStringView sDiagnostics);
   void UpdateDiagnostics(plStringView sDiagnostics);
   void LogBuildOutput(plStringView sDiagnostics, bool bBuildFailed) const;
 

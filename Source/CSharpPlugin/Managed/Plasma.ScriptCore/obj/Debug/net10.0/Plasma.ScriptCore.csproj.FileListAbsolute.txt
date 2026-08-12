@@ -11,3 +11,4 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Scr
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.xml
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\ref\Plasma.ScriptCore.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Debug\net10.0\Plasma.ScriptCore.sourcelink.json

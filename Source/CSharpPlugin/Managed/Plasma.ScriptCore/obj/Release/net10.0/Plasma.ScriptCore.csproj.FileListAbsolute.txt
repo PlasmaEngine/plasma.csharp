@@ -16,6 +16,10 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.Scr
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Release\net10.0\Plasma.ScriptCore.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\bin\Release\net10.0\Plasma.ScriptCore.xml
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptCore\obj\Release\net10.0\Plasma.ScriptCore.sourcelink.json
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptCore.deps.json
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptCore.dll
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptCore.pdb
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptCore.xml
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ScriptCore.deps.json
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ScriptCore.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\M0Game\Plasma.ScriptCore.pdb

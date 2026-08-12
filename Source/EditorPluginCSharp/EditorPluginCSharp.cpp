@@ -237,6 +237,8 @@ namespace
       return;
 
     plString message;
+    plQtUiServices::Event::TextType messageType = plQtUiServices::Event::TextType::Info;
+
     if (event.m_Type == plAssetProcessorProgressEvent::Type::ProcessingStarted)
     {
       message = "Compiling C# scripts in the background...";
@@ -248,14 +250,32 @@ namespace
     else if (event.m_Result.Succeeded())
     {
       message = "C# compilation succeeded. Script assets are up to date.";
+      messageType = plQtUiServices::Event::TextType::Success;
     }
     else
     {
-      message = "C# compilation failed. See the Asset Curator or log for diagnostics.";
+      messageType = plQtUiServices::Event::TextType::Error;
+      message = "C# compilation failed. See the log for diagnostics.";
+
+      // A background transform runs in the asset processor, so everything it logged went to that
+      // process's log. Reprint it here, in the editor, where the person who pressed build is looking.
+      plStringBuilder details = event.m_Result.m_sMessage;
+      details.ReplaceAll("\r", "");
+
+      plHybridArray<plStringView, 32> lines;
+      details.Split(false, lines, "\n");
+
+      plLog::Error("C# compilation failed for '{}'.", event.m_sAssetPath);
+      for (plStringView line : lines)
+      {
+        line.Trim(" \t");
+        if (!line.IsEmpty())
+          plLog::Error("  {}", line);
+      }
     }
 
-    QMetaObject::invokeMethod(plQtEditorApp::GetSingleton(), [message = std::move(message)]()
-      { plQtUiServices::ShowGlobalStatusBarMessage(plFmt("{}", message)); }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(plQtEditorApp::GetSingleton(), [message = std::move(message), messageType]()
+      { plQtUiServices::ShowGlobalStatusBarMessage(plFmt("{}", message), messageType); }, Qt::QueuedConnection);
   }
 
   void OnLoadPlugin()

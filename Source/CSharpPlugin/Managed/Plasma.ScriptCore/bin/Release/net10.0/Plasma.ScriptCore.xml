@@ -59,6 +59,286 @@
         <member name="T:Plasma.ScriptExecutionContext">
             <summary>The world scoped to the current native-to-managed script call.</summary>
         </member>
+        <member name="T:Plasma.ConsoleCommandAttribute">
+            <summary>
+            Exposes a static method as a console command, callable from the engine's console.
+            </summary>
+            <remarks>
+            The method must be <c>static</c>. Parameters are limited to <c>bool</c>, <c>int</c>,
+            <c>uint</c>, <c>float</c>, <c>double</c> and <c>string</c>, because the console's command
+            interpreter is Lua and marshals through <c>plVariant</c>; anything else is a compile error rather
+            than a surprise at the prompt. A return value is allowed but ignored, matching native console
+            functions.
+            </remarks>
+            <example>
+            <code>
+            [ConsoleCommand("ai.reveal", "(bool enabled) - draw every agent's current path")]
+            public static void Reveal(bool enabled) => AiDebug.DrawPaths = enabled;
+            </code>
+            </example>
+        </member>
+        <member name="P:Plasma.ConsoleCommandAttribute.Name">
+            <summary>The name typed at the console. Also what auto-completion matches on.</summary>
+        </member>
+        <member name="P:Plasma.ConsoleCommandAttribute.Help">
+            <summary>One-line description shown by the console next to the name.</summary>
+        </member>
+        <member name="T:Plasma.ScriptCommandParameterKind">
+            <summary>Argument types a console command can take.</summary>
+        </member>
+        <member name="T:Plasma.ScriptCommandDescriptor">
+            <summary>One console command, emitted by the source generator.</summary>
+        </member>
+        <member name="M:Plasma.ScriptCommandDescriptor.#ctor(System.UInt64,System.String,System.String,System.Collections.Generic.IReadOnlyList{Plasma.ScriptCommandParameterKind},Plasma.ScriptCommandInvoker)">
+            <summary>One console command, emitted by the source generator.</summary>
+        </member>
+        <member name="T:Plasma.IScriptCommandProvider">
+            <summary>Implemented by generated code in the collectible project assembly.</summary>
+        </member>
+        <member name="T:Plasma.DebugConsole">
+            <summary>Writes to the engine console from a console command.</summary>
+            <remarks>
+            <para>
+            Output goes to the main console, so it lands in whichever front-end invoked the command: the
+            in-game ImGui console's command window, or the editor's console panel over
+            <c>plConsoleCmdMsgToEngine</c>.
+            </para>
+            <para>
+            Named <c>DebugConsole</c> rather than <c>Console</c> on purpose: generated script projects enable
+            implicit usings, so a <c>Plasma.Console</c> would be ambiguous with <c>System.Console</c> in every
+            file that writes a line.
+            </para>
+            </remarks>
+        </member>
+        <member name="T:Plasma.DebugConsole.LineType">
+            <summary>Mirrors plConsoleString::Type.</summary>
+        </member>
+        <member name="T:Plasma.ConsoleApi">
+            <summary>The native "Plasma.Console" extension table. Infrastructure, not an authoring API.</summary>
+        </member>
+        <member name="T:Plasma.ConsoleToolAttribute">
+             <summary>Registers a <see cref="T:Plasma.ConsoleTool"/> so the engine console gives it a window.</summary>
+             <example>
+             <code>
+             [ConsoleTool("AI", Category = "Gameplay")]
+             public sealed class AiTools : ConsoleTool
+             {
+                 private float _radius = 5.0f;
+            
+                 public override void OnDraw()
+                 {
+                     ImGui.Checkbox("Draw paths"u8, ref AiDebug.DrawPaths);
+                     ImGui.SliderFloat("Query radius"u8, ref _radius, 0.0f, 50.0f);
+                     if (ImGui.Button("Rebuild navmesh"u8))
+                         Nav.Rebuild();
+                 }
+             }
+             </code>
+             </example>
+        </member>
+        <member name="P:Plasma.ConsoleToolAttribute.Name">
+            <summary>Window title, and the key its open/closed state is saved under.</summary>
+        </member>
+        <member name="P:Plasma.ConsoleToolAttribute.Category">
+            <summary>Groups the entry in the console's Windows menu. Defaults to "Tools".</summary>
+        </member>
+        <member name="P:Plasma.ConsoleToolAttribute.Pinned">
+            <summary>When true the window stays visible after the console is closed.</summary>
+        </member>
+        <member name="T:Plasma.ConsoleTool">
+            <summary>
+            A debug panel drawn by the engine console. Derive from this, mark it with
+            <see cref="T:Plasma.ConsoleToolAttribute"/>, and draw with <see cref="T:Plasma.ImGui"/> in <see cref="M:Plasma.ConsoleTool.OnDraw"/>.
+            </summary>
+            <remarks>
+            <para>
+            One instance is created per script generation and lives until that generation is unloaded, so a
+            tool may hold state across frames - but not across a script rebuild.
+            </para>
+            <para>
+            <see cref="M:Plasma.ConsoleTool.OnDraw"/> runs on the engine's main thread inside the console's ImGui frame, between a
+            Begin/End pair the console owns. Calling ImGui from anywhere else is outside a frame and will
+            fail. If the method throws, or leaves ImGui's stacks unbalanced, the console disables the tool
+            rather than letting it corrupt the rest of the UI.
+            </para>
+            </remarks>
+        </member>
+        <member name="M:Plasma.ConsoleTool.OnDraw">
+            <summary>Draws the tool's contents. Called once per frame while the tool is visible.</summary>
+        </member>
+        <member name="M:Plasma.ConsoleTool.OnRegistered">
+            <summary>Called once after the tool is registered, before its first draw.</summary>
+        </member>
+        <member name="M:Plasma.ConsoleTool.OnUnregistered">
+            <summary>Called before the tool is removed, when its generation is unloaded.</summary>
+        </member>
+        <member name="T:Plasma.ScriptToolDescriptor">
+            <summary>One console tool, emitted by the source generator.</summary>
+        </member>
+        <member name="M:Plasma.ScriptToolDescriptor.#ctor(System.UInt64,System.String,System.String,System.Boolean,System.Func{Plasma.ConsoleTool})">
+            <summary>One console tool, emitted by the source generator.</summary>
+        </member>
+        <member name="T:Plasma.IScriptToolProvider">
+            <summary>Implemented by generated code in the collectible project assembly.</summary>
+        </member>
+        <member name="T:Plasma.DebugApi">
+            <summary>
+            The native "Plasma.Debug" extension table. Infrastructure for <see cref="T:Plasma.DebugDraw"/>, not an
+            authoring API.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugApi.Require">
+            <summary>
+            Returns the resolved table, or throws when the host does not provide one. Debug drawing that
+            silently does nothing is worse than an exception, because the usual reason to call it is that
+            something else is already wrong.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugApi.Reset">
+            <summary>Drops the cached table when the host is reconfigured.</summary>
+        </member>
+        <member name="T:Plasma.DebugLineMode">
+            <summary>Where a debug line is drawn.</summary>
+        </member>
+        <member name="F:Plasma.DebugLineMode.World">
+            <summary>In the world, depth tested.</summary>
+        </member>
+        <member name="F:Plasma.DebugLineMode.Occluded">
+            <summary>On top of all geometry, with distance fade-out.</summary>
+        </member>
+        <member name="F:Plasma.DebugLineMode.Screen2D">
+            <summary>In screen space; coordinates are pixels.</summary>
+        </member>
+        <member name="F:Plasma.DebugBoxStyle.Corners">
+            <summary>Only the box corners, sized by a fraction of each edge.</summary>
+        </member>
+        <member name="T:Plasma.DebugLine">
+            <summary>One debug line. Layout matches <c>plDebugRenderer::Line</c>, so arrays cross to native
+            code as raw memory rather than being converted element by element.</summary>
+        </member>
+        <member name="T:Plasma.DebugTriangle">
+            <summary>One filled debug triangle. Layout matches <c>plDebugRenderer::Triangle</c>.</summary>
+        </member>
+        <member name="T:Plasma.DebugDraw">
+            <summary>
+            Debug rendering. Everything draws into the world of the script that is currently executing and
+            lasts one frame, except the <c>AddPersistent*</c> calls, which last for a given duration.
+            </summary>
+            <remarks>
+            <para>
+            These call the engine through a fixed function table: no boxing, no argument arrays, nothing
+            allocated per call. That matters because debug drawing is the API most likely to be called inside
+            a loop - and for real loops, <see cref="M:Plasma.DebugDraw.Lines(System.Int32)"/> submits a whole batch in one crossing.
+            </para>
+            <para>
+            This sits beside the generated <c>Debug</c> class rather than replacing it. <c>Debug</c> exposes
+            13 of <c>plDebugRenderer</c>'s entry points through the reflected binding path, which allocates
+            roughly six times per call; <c>DebugDraw</c> covers the whole surface and allocates nothing.
+            Existing <c>Debug.*</c> calls keep working unchanged.
+            </para>
+            </remarks>
+        </member>
+        <member name="F:Plasma.DebugDraw.StackTextBytes">
+            <summary>UTF-8 bytes below this length are encoded on the stack.</summary>
+        </member>
+        <member name="T:Plasma.DebugDraw.LineBatch">
+            <summary>
+            Accumulates lines and submits them in one native call when disposed. A ref struct on purpose:
+            the batch is only valid inside the script call that created it, because the world it draws
+            into is the one on the current execution scope.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.LineBatch.Flush">
+            <summary>Submits what has accumulated so far and keeps the batch usable.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Lines(System.Int32)">
+            <summary>Starts a batch of lines submitted together when it is disposed.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Lines(System.Int32,Plasma.DebugLineMode)">
+            <summary>Starts a batch drawn in the given mode.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Lines(System.Int32,Plasma.DebugLineMode,Plasma.Transform)">
+            <summary>Starts a batch drawn in the given mode and local space.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Capsule(System.Single,System.Single,Plasma.Color,Plasma.Transform)">
+            <summary>An upright wireframe capsule along the transform's local Z axis.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.CylinderZ(System.Single,System.Single,Plasma.Color,Plasma.Transform)">
+            <summary>An upright wireframe cylinder along the transform's local Z axis.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Frustum(Plasma.Transform,System.Single,System.Single,System.Single,System.Single,Plasma.Color,System.Boolean)">
+            <summary>A wireframe view frustum looking along the transform's local +X axis.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Cylinder(System.Single,System.Single,System.Single,Plasma.Color,Plasma.Color,Plasma.Transform,System.Boolean,System.Boolean,Plasma.DebugAxis)">
+            <summary>
+            A cylinder starting at the transform's origin. Different start and end radii give a cone or
+            an arrow head.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Angle(System.Single,System.Single,Plasma.Color,Plasma.Color,Plasma.Transform,Plasma.Vec3,Plasma.Vec3)">
+            <summary>A filled 2D wedge between two angles, in the plane around <paramref name="rotationAxis"/>.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.OpeningCone(System.Single,Plasma.Color,Plasma.Color,Plasma.Transform,Plasma.Vec3)">
+            <summary>A cone with its tip at the transform's origin, opening along the forward axis.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.LimitCone(System.Single,System.Single,Plasma.Color,Plasma.Color,Plasma.Transform)">
+            <summary>A bent cone opening by a different half angle along the local Y and Z axes.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Rectangle2D(System.Single,System.Single,System.Single,System.Single,Plasma.Color,System.Single,System.Boolean)">
+            <summary>A screen-space rectangle, in pixels.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Text2D(System.String,System.Int32,System.Int32,Plasma.Color,System.UInt32,Plasma.TextHAlign,Plasma.TextVAlign)">
+            <summary>
+            Screen-space text, positioned in pixels. Newlines split lines and tabs separate columns of a
+            table. Returns the number of lines drawn.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Text3D(System.String,Plasma.Vec3,Plasma.Color,System.UInt32,Plasma.TextHAlign,Plasma.TextVAlign,System.Boolean)">
+            <summary>World-space text that always faces the camera and keeps a constant pixel size.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.Text3DInWorld(System.String,Plasma.Transform,System.Single,Plasma.Color,Plasma.TextHAlign,Plasma.TextVAlign)">
+            <summary>
+            Text that sits on a fixed plane in the world rather than facing the camera, so it takes
+            perspective and is occluded by geometry. Glyph size is in world units.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.InfoText(System.String,Plasma.TextPlacement,System.String,Plasma.Color)">
+            <summary>
+            Text placed automatically in a screen corner, stacked so lines from the same corner never
+            overlap. The group name only inserts whitespace between unrelated blocks; it is not drawn.
+            </summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.AddPersistentInfoText(System.String,Plasma.Time,Plasma.TextPlacement,Plasma.Color)">
+            <summary>Info text that stays on screen for a while.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.GetTextGlyphWidth(System.UInt32)">
+            <summary>Width in pixels of one glyph at the given text size.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.GetTextLineHeight(System.UInt32)">
+            <summary>Line height in pixels at the given text size.</summary>
+        </member>
+        <member name="P:Plasma.DebugDraw.TextScale">
+            <summary>The global debug text scale.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.GetResolution">
+            <summary>Resolution of the first main view that can be found, in pixels.</summary>
+        </member>
+        <member name="M:Plasma.DebugDraw.EncodeUtf8(System.String,System.Span{System.Byte},System.Byte[]@)">
+            <summary>
+            Encodes into <paramref name="scratch"/> when it fits, and only rents when it does not. Debug
+            text is drawn every frame, so the common short label must not touch the heap.
+            </summary>
+        </member>
+        <member name="T:Plasma.ImGui">
+            <summary>
+            Dear ImGui, bound from the engine's own vendored header. Only call these from inside a
+            console tool's <c>OnDraw</c>: ImGui is frame- and thread-scoped, and the console owns the
+            frame.
+            </summary>
+        </member>
+        <member name="F:Plasma.ImGui.StackTextBytes">
+            <summary>UTF-8 bytes below this length are encoded on the stack.</summary>
+        </member>
         <member name="T:Plasma.Log">
             <summary>Writes gameplay messages to the Plasma log.</summary>
         </member>
@@ -74,10 +354,20 @@
             This is infrastructure for generated code and is not a gameplay authoring API.
             </summary>
         </member>
+        <member name="M:Plasma.NativeBridge.QueryExtension``1(System.String,System.UInt32)">
+            <summary>
+            Resolves an optional native extension table by name. Returns null when the host does not
+            provide it, which is a normal answer rather than an error: extension tables exist so the
+            frozen host ABI does not have to grow every time a capability is added.
+            </summary>
+        </member>
         <member name="T:Plasma.NativeObject">
             <summary>
             A generation-checked reference to a native object. It intentionally contains no native pointer.
             </summary>
+        </member>
+        <member name="T:Plasma.Utf8Span">
+            <summary>A borrowed, non-owning view of UTF-8 bytes. Matches <c>plCSharpUtf8Span</c>.</summary>
         </member>
         <member name="T:Plasma.ReflectedCall">
             <summary>Generic reflected invocation path used by generated engine wrappers.</summary>

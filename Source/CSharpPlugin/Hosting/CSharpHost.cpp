@@ -2,6 +2,8 @@
 
 #include <CSharpPlugin/Hosting/CSharpHost.h>
 #include <CSharpPlugin/Runtime/CSharpBindingRuntime.h>
+#include <CSharpPlugin/Runtime/CSharpConsoleRegistry.h>
+#include <CSharpPlugin/Runtime/CSharpDebugApi.h>
 #include <CSharpPlugin/Runtime/CSharpFunctionProperty.h>
 #include <CSharpPlugin/Runtime/CSharpObjectRegistry.h>
 #include <Core/World/Component.h>
@@ -58,21 +60,34 @@ namespace
 
   /// \brief Finds the directory holding the "CSharp" payload folder.
   ///
-  /// Beside the plugin first, then the application directory. The fallback is not merely defensive:
-  /// a bundle with %LoadCopy{true} is loaded from a copy elsewhere, and that copy has no payload
-  /// next to it.
+  /// Beside the plugin first, then upwards, then the application directory.
+  ///
+  /// Walking up is what makes this work for an installed package. plPlugin loads a DLL from a copy
+  /// at "<plugin dir>/loaded/<N>/<name>.dll" so the original stays writable, which puts the running
+  /// module two directories below its own payload. Checking only beside the module found nothing,
+  /// fell through to the application directory - where an installed package has never put anything -
+  /// and every script failed with "C# managed bootstrap is missing".
   plStringBuilder FindPayloadRoot()
   {
-    const plStringBuilder sPluginDir = GetPluginDirectory();
-    if (!sPluginDir.IsEmpty())
+    constexpr plUInt32 uiMaxParentLevels = 4;
+
+    plStringBuilder sDirectory = GetPluginDirectory();
+    for (plUInt32 uiLevel = 0; uiLevel < uiMaxParentLevels && !sDirectory.IsEmpty(); ++uiLevel)
     {
-      plStringBuilder sCandidate(sPluginDir);
+      plStringBuilder sCandidate(sDirectory);
       sCandidate.AppendPath("CSharp");
 
       if (plOSFile::ExistsDirectory(sCandidate))
       {
-        return sPluginDir;
+        return sDirectory;
       }
+
+      const plStringBuilder sPrevious = sDirectory;
+      sDirectory.PathParentDirectory();
+      sDirectory.MakeCleanPath();
+
+      if (sDirectory == sPrevious)
+        break;
     }
 
     plStringBuilder sAppDir = plOSFile::GetApplicationDirectory();
@@ -913,18 +928,44 @@ plCSharpStatus PL_CSHARP_CALL plCSharpHost::NativeQueryExtension(
     return plCSharpStatus::InvalidArgument;
 
   *out_ppApi = nullptr;
-  if (GetUtf8View(name) != "Plasma.World" || uiMinimumVersion > 2)
-    return plCSharpStatus::Unsupported;
 
-  static plCSharpWorldApiV1 worldApi = []()
+  const plStringView sName = GetUtf8View(name);
+
+  if (sName == "Plasma.World")
   {
-    plCSharpWorldApiV1 api;
-    api.m_SendMessage = &plCSharpHost::NativeSendMessage;
-    api.m_SendManagedMessage = &plCSharpHost::NativeSendManagedMessage;
-    return api;
-  }();
-  *out_ppApi = &worldApi;
-  return plCSharpStatus::Success;
+    if (uiMinimumVersion > 2)
+      return plCSharpStatus::Unsupported;
+
+    static plCSharpWorldApiV1 worldApi = []()
+    {
+      plCSharpWorldApiV1 api;
+      api.m_SendMessage = &plCSharpHost::NativeSendMessage;
+      api.m_SendManagedMessage = &plCSharpHost::NativeSendManagedMessage;
+      return api;
+    }();
+    *out_ppApi = &worldApi;
+    return plCSharpStatus::Success;
+  }
+
+  if (sName == "Plasma.Debug")
+  {
+    if (uiMinimumVersion > 1)
+      return plCSharpStatus::Unsupported;
+
+    *out_ppApi = const_cast<plCSharpDebugApiV1*>(plCSharpDebugApi::GetApi());
+    return plCSharpStatus::Success;
+  }
+
+  if (sName == "Plasma.Console")
+  {
+    if (uiMinimumVersion > 1)
+      return plCSharpStatus::Unsupported;
+
+    *out_ppApi = const_cast<plCSharpConsoleApiV1*>(plCSharpConsoleRegistry::GetConsoleApi());
+    return plCSharpStatus::Success;
+  }
+
+  return plCSharpStatus::Unsupported;
 }
 
 plCSharpStatus PL_CSHARP_CALL plCSharpHost::NativeSendMessage(

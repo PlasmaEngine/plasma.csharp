@@ -1,0 +1,17 @@
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\bin\Debug\net10.0\Plasma.ScriptTestGame.deps.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\bin\Debug\net10.0\Plasma.ScriptTestGame.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\bin\Debug\net10.0\Plasma.ScriptTestGame.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\bin\Debug\net10.0\Plasma.ScriptCore.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\bin\Debug\net10.0\Plasma.ScriptCore.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\bin\Debug\net10.0\Plasma.ScriptCore.xml
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.csproj.AssemblyReference.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.GeneratedMSBuildEditorConfig.editorconfig
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.AssemblyInfoInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.AssemblyInfo.cs
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.csproj.CoreCompileInputs.cache
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.sourcelink.json
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.S.D78B0D2C.Up2Date
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\refint\Plasma.ScriptTestGame.dll
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\Plasma.ScriptTestGame.pdb
+E:\PlasmaTech\LocalPackages\plasma.csharp\Source\CSharpPlugin\Managed\Plasma.ScriptTestGame\obj\Debug\net10.0\ref\Plasma.ScriptTestGame.dll

@@ -169,3 +169,18 @@ public unsafe struct ManagedApiV1
     public delegate* unmanaged[Cdecl]<CSharpUtf8Span, uint, void**, CSharpStatus> QueryExtension;
     public delegate* unmanaged[Cdecl]<long, long*, CSharpStatus> RunM0Probe;
 }
+
+/// <summary>
+/// Managed console operations, handed to native code through ManagedApiV1.QueryExtension rather than
+/// widening the frozen host ABI.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+public unsafe struct ManagedConsoleApiV1
+{
+    public uint Size;
+    public uint Version;
+    public delegate* unmanaged[Cdecl]<ulong, ulong, CSharpValue*, uint, CSharpStatus> InvokeCommand;
+
+    /// <summary>Draws one console tool inside the console's ImGui frame.</summary>
+    public delegate* unmanaged[Cdecl]<ulong, ulong, CSharpStatus> DrawTool;
+}

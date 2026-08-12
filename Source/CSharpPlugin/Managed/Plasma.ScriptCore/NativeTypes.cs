@@ -131,7 +131,25 @@ public readonly record struct Color(float R, float G, float B, float A = 1.0f)
 }
 
 [StructLayout(LayoutKind.Sequential)]
-public readonly record struct Transform(Vec3 Position, Quat Rotation, Vec3 Scale);
+public readonly record struct Transform(Vec3 Position, Quat Rotation, Vec3 Scale)
+{
+    public static Transform Identity => new(default, Quat.Identity, new Vec3(1, 1, 1));
+
+    public static Transform FromPosition(Vec3 position) =>
+        new(position, Quat.Identity, new Vec3(1, 1, 1));
+
+    public static Transform FromPositionRotation(Vec3 position, Quat rotation) =>
+        new(position, rotation, new Vec3(1, 1, 1));
+}
+
+/// <summary>A borrowed, non-owning view of UTF-8 bytes. Matches <c>plCSharpUtf8Span</c>.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+internal unsafe struct Utf8Span
+{
+    public byte* Data;
+    public uint Length;
+    public uint Reserved;
+}
 
 public readonly partial record struct World(NativeObject Native)
 {

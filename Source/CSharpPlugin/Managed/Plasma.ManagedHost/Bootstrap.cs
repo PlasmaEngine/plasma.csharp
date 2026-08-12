@@ -27,6 +27,7 @@ public static unsafe class Bootstrap
 
     private static NativeApiV1 s_nativeApi;
     private static delegate* unmanaged[Cdecl]<long, long*, CSharpStatus> s_nativeM0Probe;
+    private static ManagedConsoleApiV1* s_consoleApi;
     private static bool s_initialized;
     private static long s_nextGeneration;
     private static long s_nextInstance;
@@ -245,8 +246,11 @@ public static unsafe class Bootstrap
                 loadContext = new GenerationLoadContext(shadowAssemblyPath);
                 Assembly assembly = loadContext.LoadFromAssemblyPath(shadowAssemblyPath);
                 IReadOnlyList<ScriptTypeDescriptor> descriptors = DiscoverDescriptors(assembly);
-                byte[] manifest = BuildManifest(id, assembly, descriptors);
-                var loadedGeneration = new Generation(id, loadContext, shadowDirectory, descriptors, manifest);
+                IReadOnlyList<ScriptCommandDescriptor> commands = DiscoverCommands(assembly);
+                Dictionary<ulong, ConsoleTool> tools = DiscoverTools(assembly, out var toolDescriptors);
+                byte[] manifest = BuildManifest(id, assembly, descriptors, commands, toolDescriptors);
+                var loadedGeneration =
+                    new Generation(id, loadContext, shadowDirectory, descriptors, commands, tools, manifest);
 
                 lock (Sync)
                 {
@@ -674,13 +678,203 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus QueryExtensionExport(CSharpUtf8Span name, uint minimumVersion, void** api)
     {
-        if (api is not null)
+        if (api is null)
         {
-            *api = null;
+            return Fail(CSharpStatus.InvalidArgument, "The extension output pointer is null.");
+        }
+
+        *api = null;
+
+        if (Decode(name) == "Plasma.Console" && minimumVersion <= 1)
+        {
+            *api = GetConsoleApi();
+            return CSharpStatus.Success;
         }
 
         return Fail(CSharpStatus.Unsupported,
             $"Managed C# extension '{Decode(name)}' version {minimumVersion} is not available.");
+    }
+
+    /// <summary>
+    /// The console table lives in unmanaged memory so its address is stable for the process. A static
+    /// managed field would move, and native code holds this pointer for as long as the host lives.
+    /// </summary>
+    private static void* GetConsoleApi()
+    {
+        lock (Sync)
+        {
+            if (s_consoleApi is null)
+            {
+                var api = (ManagedConsoleApiV1*)NativeMemory.AllocZeroed((nuint)sizeof(ManagedConsoleApiV1));
+                api->Size = (uint)sizeof(ManagedConsoleApiV1);
+                api->Version = 1;
+                api->InvokeCommand = &InvokeConsoleCommandExport;
+                api->DrawTool = &DrawConsoleToolExport;
+                s_consoleApi = api;
+            }
+
+            return s_consoleApi;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static CSharpStatus InvokeConsoleCommandExport(
+        ulong generationId, ulong commandId, CSharpValue* arguments, uint argumentCount)
+    {
+        try
+        {
+            if (arguments is null && argumentCount != 0)
+            {
+                return Fail(CSharpStatus.InvalidArgument, "Console command arguments are null.");
+            }
+
+            ScriptCommandDescriptor command;
+            lock (Sync)
+            {
+                if (!Generations.TryGetValue(generationId, out Generation? generation))
+                {
+                    return Fail(CSharpStatus.GenerationNotFound,
+                        $"C# generation {generationId} was not found.");
+                }
+
+                if (!generation.Commands.TryGetValue(commandId, out command!))
+                {
+                    return Fail(CSharpStatus.MemberNotFound,
+                        $"C# console command 0x{commandId:X16} was not found in generation {generationId}.");
+                }
+            }
+
+            if (argumentCount != command.Parameters.Count)
+            {
+                return Fail(CSharpStatus.InvalidArgument,
+                    $"Console command '{command.Name}' expects {command.Parameters.Count} argument(s), got {argumentCount}.");
+            }
+
+            object?[] values = argumentCount == 0 ? [] : new object?[argumentCount];
+            for (int index = 0; index < values.Length; ++index)
+            {
+                if (!TryConvertCommandArgument(
+                        arguments[index], command.Parameters[index], out object? value))
+                {
+                    return Fail(CSharpStatus.InvalidValue,
+                        $"Console command '{command.Name}' argument {index} could not be converted to {command.Parameters[index]}.");
+                }
+
+                values[index] = value;
+            }
+
+            command.Invoke(values);
+            return CSharpStatus.Success;
+        }
+        catch (Exception exception)
+        {
+            return Fail(CSharpStatus.ManagedException, exception);
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static CSharpStatus DrawConsoleToolExport(ulong generationId, ulong toolId)
+    {
+        try
+        {
+            ConsoleTool tool;
+            lock (Sync)
+            {
+                if (!Generations.TryGetValue(generationId, out Generation? generation))
+                {
+                    return Fail(CSharpStatus.GenerationNotFound,
+                        $"C# generation {generationId} was not found.");
+                }
+
+                if (!generation.Tools.TryGetValue(toolId, out tool!))
+                {
+                    return Fail(CSharpStatus.MemberNotFound,
+                        $"C# console tool 0x{toolId:X16} was not found in generation {generationId}.");
+                }
+            }
+
+            // Draws inside the console's ImGui frame. An exception must come back as a status: the
+            // native side is mid-frame and unwinding through it would take the console with it.
+            tool.OnDraw();
+            return CSharpStatus.Success;
+        }
+        catch (Exception exception)
+        {
+            return Fail(CSharpStatus.ManagedException, exception);
+        }
+    }
+
+    private static bool TryConvertCommandArgument(
+        CSharpValue value, ScriptCommandParameterKind kind, out object? converted)
+    {
+        converted = null;
+
+        switch (kind)
+        {
+            case ScriptCommandParameterKind.Bool:
+                converted = value.Kind switch
+                {
+                    CSharpValueKind.Boolean => value.Payload0 != 0,
+                    CSharpValueKind.Int64 => (long)value.Payload0 != 0,
+                    CSharpValueKind.UInt64 => value.Payload0 != 0,
+                    _ => null,
+                };
+                break;
+
+            case ScriptCommandParameterKind.Int:
+                converted = value.Kind switch
+                {
+                    CSharpValueKind.Int64 => (int)(long)value.Payload0,
+                    CSharpValueKind.UInt64 => (int)value.Payload0,
+                    CSharpValueKind.Double => (int)BitConverter.UInt64BitsToDouble(value.Payload0),
+                    CSharpValueKind.Boolean => value.Payload0 != 0 ? 1 : 0,
+                    _ => null,
+                };
+                break;
+
+            case ScriptCommandParameterKind.UInt:
+                converted = value.Kind switch
+                {
+                    CSharpValueKind.Int64 => (uint)(long)value.Payload0,
+                    CSharpValueKind.UInt64 => (uint)value.Payload0,
+                    CSharpValueKind.Double => (uint)BitConverter.UInt64BitsToDouble(value.Payload0),
+                    CSharpValueKind.Boolean => value.Payload0 != 0 ? 1u : 0u,
+                    _ => null,
+                };
+                break;
+
+            case ScriptCommandParameterKind.Float:
+                converted = value.Kind switch
+                {
+                    CSharpValueKind.Double => (float)BitConverter.UInt64BitsToDouble(value.Payload0),
+                    CSharpValueKind.Int64 => (float)(long)value.Payload0,
+                    CSharpValueKind.UInt64 => (float)value.Payload0,
+                    _ => null,
+                };
+                break;
+
+            case ScriptCommandParameterKind.Double:
+                converted = value.Kind switch
+                {
+                    CSharpValueKind.Double => BitConverter.UInt64BitsToDouble(value.Payload0),
+                    CSharpValueKind.Int64 => (double)(long)value.Payload0,
+                    CSharpValueKind.UInt64 => (double)value.Payload0,
+                    _ => null,
+                };
+                break;
+
+            case ScriptCommandParameterKind.String:
+                converted = value.Kind == CSharpValueKind.Utf8String
+                    ? Decode(new CSharpUtf8Span
+                    {
+                        Data = (byte*)value.Payload0,
+                        Length = checked((uint)value.Payload1),
+                    })
+                    : null;
+                break;
+        }
+
+        return converted is not null;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -898,10 +1092,78 @@ public static unsafe class Bootstrap
         return [.. descriptors.Values];
     }
 
+    /// <summary>
+    /// Collects the console commands the generator emitted. Unlike script descriptors, none is a
+    /// perfectly normal answer: most projects declare no console commands at all.
+    /// </summary>
+    private static IReadOnlyList<ScriptCommandDescriptor> DiscoverCommands(Assembly assembly)
+    {
+        var commands = new SortedDictionary<ulong, ScriptCommandDescriptor>();
+        foreach (Type providerType in assembly.GetTypes()
+                     .Where(type => !type.IsAbstract && typeof(IScriptCommandProvider).IsAssignableFrom(type))
+                     .OrderBy(type => type.FullName, StringComparer.Ordinal))
+        {
+            if (Activator.CreateInstance(providerType) is not IScriptCommandProvider provider)
+            {
+                continue;
+            }
+
+            foreach (ScriptCommandDescriptor command in provider.GetCommands().OrderBy(command => command.Id))
+            {
+                if (!commands.TryAdd(command.Id, command))
+                {
+                    throw new InvalidDataException(
+                        $"Duplicate C# console command '{command.Name}' in '{assembly.FullName}'.");
+                }
+            }
+        }
+
+        return [.. commands.Values];
+    }
+
+    /// <summary>
+    /// Instantiates the console tools the generator emitted. One instance per generation, created
+    /// here so a tool can hold state across frames and be torn down with its load context.
+    /// </summary>
+    private static Dictionary<ulong, ConsoleTool> DiscoverTools(Assembly assembly,
+        out List<(ulong Id, string Name, string Category, bool Pinned)> descriptors)
+    {
+        var tools = new Dictionary<ulong, ConsoleTool>();
+        descriptors = [];
+
+        foreach (Type providerType in assembly.GetTypes()
+                     .Where(type => !type.IsAbstract && typeof(IScriptToolProvider).IsAssignableFrom(type))
+                     .OrderBy(type => type.FullName, StringComparer.Ordinal))
+        {
+            if (Activator.CreateInstance(providerType) is not IScriptToolProvider provider)
+            {
+                continue;
+            }
+
+            foreach (ScriptToolDescriptor descriptor in provider.GetTools().OrderBy(tool => tool.Id))
+            {
+                if (tools.ContainsKey(descriptor.Id))
+                {
+                    throw new InvalidDataException(
+                        $"Duplicate C# console tool '{descriptor.Name}' in '{assembly.FullName}'.");
+                }
+
+                ConsoleTool tool = descriptor.Create();
+                tools.Add(descriptor.Id, tool);
+                descriptors.Add((descriptor.Id, descriptor.Name, descriptor.Category, descriptor.Pinned));
+                tool.OnRegistered();
+            }
+        }
+
+        return tools;
+    }
+
     private static byte[] BuildManifest(
         ulong generationId,
         Assembly assembly,
-        IReadOnlyList<ScriptTypeDescriptor> descriptors)
+        IReadOnlyList<ScriptTypeDescriptor> descriptors,
+        IReadOnlyList<ScriptCommandDescriptor> commands,
+        IReadOnlyList<(ulong Id, string Name, string Category, bool Pinned)> tools)
     {
         var manifest = new
         {
@@ -909,6 +1171,20 @@ public static unsafe class Bootstrap
             valueLayoutVersion = ValueLayoutVersion,
             generation = HexId(generationId),
             assembly = assembly.GetName().Name,
+            commands = commands.Select(command => new
+            {
+                id = HexId(command.Id),
+                name = command.Name,
+                help = command.Help,
+                parameters = command.Parameters.Select(static parameter => (uint)parameter),
+            }),
+            tools = tools.Select(tool => new
+            {
+                id = HexId(tool.Id),
+                name = tool.Name,
+                category = tool.Category,
+                pinned = tool.Pinned,
+            }),
             types = descriptors.Select(type => new
             {
                 id = HexId(type.Id),
@@ -1393,12 +1669,16 @@ public static unsafe class Bootstrap
             GenerationLoadContext loadContext,
             string shadowDirectory,
             IReadOnlyList<ScriptTypeDescriptor> descriptors,
+            IReadOnlyList<ScriptCommandDescriptor> commands,
+            Dictionary<ulong, ConsoleTool> tools,
             byte[] manifest)
         {
             Id = id;
             LoadContext = loadContext;
             ShadowDirectory = shadowDirectory;
             Types = descriptors.ToDictionary(descriptor => descriptor.Id);
+            Commands = commands.ToDictionary(command => command.Id);
+            Tools = tools;
             Manifest = manifest;
         }
 
@@ -1406,12 +1686,31 @@ public static unsafe class Bootstrap
         public GenerationLoadContext LoadContext { get; private set; }
         public string ShadowDirectory { get; }
         public Dictionary<ulong, ScriptTypeDescriptor> Types { get; private set; }
+        public Dictionary<ulong, ScriptCommandDescriptor> Commands { get; private set; }
+        public Dictionary<ulong, ConsoleTool> Tools { get; private set; }
         public byte[] Manifest { get; private set; }
 
         public void ReleaseAndUnload()
         {
             GenerationLoadContext context = LoadContext;
+
+            foreach (ConsoleTool tool in Tools.Values)
+            {
+                try
+                {
+                    tool.OnUnregistered();
+                }
+                catch (Exception exception)
+                {
+                    // A tool that throws on the way out must not block the unload; the load context
+                    // has to go regardless.
+                    Plasma.Log.Error(exception);
+                }
+            }
+
             Types = [];
+            Commands = [];
+            Tools = [];
             Manifest = [];
             LoadContext = null!;
             context.Unload();

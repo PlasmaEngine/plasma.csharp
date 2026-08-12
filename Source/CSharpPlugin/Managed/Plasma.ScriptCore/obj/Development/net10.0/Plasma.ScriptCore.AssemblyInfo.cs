@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Plasma.ScriptCore")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Development")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b11371ea1eb043499ba376af72d69be93c419063")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a466130cb2906e5045e8acd918290e88387c73ab")]
 [assembly: System.Reflection.AssemblyProductAttribute("Plasma.ScriptCore")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Plasma.ScriptCore")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

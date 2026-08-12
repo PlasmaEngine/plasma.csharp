@@ -20,6 +20,7 @@
 #include <Foundation/System/Process.h>
 #include <Foundation/Threading/Lock.h>
 #include <Foundation/Threading/Mutex.h>
+#include <Foundation/Time/Time.h>
 #include <Foundation/Types/ScopeExit.h>
 #include <Foundation/Utilities/Progress.h>
 #include <Foundation/Utilities/ConversionUtils.h>
@@ -47,7 +48,7 @@ PL_BEGIN_DYNAMIC_REFLECTED_TYPE(plCSharpProjectAssetMetaData, 3, plRTTIDefaultAl
 }
 PL_END_DYNAMIC_REFLECTED_TYPE;
 
-PL_BEGIN_DYNAMIC_REFLECTED_TYPE(plCSharpProjectAssetProperties, 2, plRTTIDefaultAllocator<plCSharpProjectAssetProperties>)
+PL_BEGIN_DYNAMIC_REFLECTED_TYPE(plCSharpProjectAssetProperties, 3, plRTTIDefaultAllocator<plCSharpProjectAssetProperties>)
 {
   PL_BEGIN_PROPERTIES
   {
@@ -65,6 +66,8 @@ PL_BEGIN_DYNAMIC_REFLECTED_TYPE(plCSharpProjectAssetProperties, 2, plRTTIDefault
     PL_ARRAY_MEMBER_PROPERTY("LastGoodFiles", m_LastGoodFiles)->AddAttributes(new plHiddenAttribute()),
     PL_MEMBER_PROPERTY("LastGoodEntryAssembly", m_sLastGoodEntryAssembly)->AddAttributes(new plHiddenAttribute()),
     PL_MEMBER_PROPERTY("LastGoodBindingSchemaHash", m_uiLastGoodBindingSchemaHash)->AddAttributes(new plHiddenAttribute()),
+    PL_MEMBER_PROPERTY("LastGoodProjectFileHash", m_uiLastGoodProjectFileHash)->AddAttributes(new plHiddenAttribute()),
+    PL_MEMBER_PROPERTY("LastGoodEntryAssemblyHash", m_uiLastGoodEntryAssemblyHash)->AddAttributes(new plHiddenAttribute()),
     PL_MEMBER_PROPERTY("BuildDiagnostics", m_sBuildDiagnostics)->AddAttributes(new plHiddenAttribute()),
   }
   PL_END_PROPERTIES;
@@ -523,6 +526,37 @@ namespace
            sLine.FindSubString_NoCase(" error CS") != nullptr ||
            sLine.FindSubString_NoCase("fatal error") != nullptr ||
            sLine.StartsWith_NoCase("error ");
+  }
+
+  /// Collects the compiler's own error lines out of a build log.
+  ///
+  /// A failed background transform reports only its status message to the editor; everything the
+  /// compiler said stays in the asset processor's log, in another process, which is not where anyone
+  /// looks. Carrying the error lines in the message puts them in front of whoever pressed build.
+  void AppendBuildErrors(plStringView sDiagnostics, plStringBuilder& ref_message)
+  {
+    constexpr plUInt32 uiMaxLines = 20;
+    constexpr plUInt32 uiMaxCharacters = 4000;
+
+    plHybridArray<plStringView, 64> lines;
+    sDiagnostics.Split(false, lines, "\r", "\n");
+
+    plUInt32 uiWritten = 0;
+    for (plStringView line : lines)
+    {
+      line.Trim(" \t");
+      if (line.IsEmpty() || !IsBuildError(line))
+        continue;
+
+      if (uiWritten == uiMaxLines || ref_message.GetElementCount() >= uiMaxCharacters)
+      {
+        ref_message.Append("\n... see the log for the remaining diagnostics.");
+        return;
+      }
+
+      ref_message.Append("\n", line);
+      ++uiWritten;
+    }
   }
 
   bool IsBuildWarning(plStringView sLine)
@@ -1026,8 +1060,11 @@ plStatus plCSharpProjectAssetDocument::ExportBindingManifest(plStringView sBindi
   if (plOSFile::CreateDirectoryStructure(directory).Failed())
     return plStatus(plFmt("Could not create C# binding-manifest directory '{}'.", directory));
 
+  // Only touch the file when the reflected surface actually changed. The manifest is an
+  // AdditionalFiles input of the generated project, so a rewritten timestamp alone invalidates
+  // CoreCompile and re-runs the binding generator over the whole reflected API.
   plDeferredFileWriter writer;
-  writer.SetOutput(sBindingManifest);
+  writer.SetOutput(sBindingManifest, true);
   if (plScriptBindingManifest::Write(snapshot, writer).Failed() || writer.Close().Failed())
     return plStatus(plFmt("Could not write C# binding manifest '{}'.", sBindingManifest));
 
@@ -1090,9 +1127,19 @@ plStatus plCSharpProjectAssetDocument::RunProjectBuild(
   return plStatus(PL_SUCCESS);
 }
 
-plStatus plCSharpProjectAssetDocument::FindEntryAssembly(
-  plStringView sProjectFile, plStringView sOutputDirectory, plStringBuilder& out_sEntryAssembly) const
+plStatus plCSharpProjectAssetDocument::FindEntryAssembly(plStringView sProjectFile, plStringView sOutputDirectory,
+  plStringView sCachedTargetFileName, plStringBuilder& out_sEntryAssembly) const
 {
+  // The assembly name only moves when the project file does, and asking MSBuild for it costs a whole
+  // second process. The caller passes the cached name while the project file's fingerprint still matches.
+  if (!sCachedTargetFileName.IsEmpty())
+  {
+    out_sEntryAssembly.Set(sOutputDirectory, "/", sCachedTargetFileName);
+    out_sEntryAssembly.MakeCleanPath();
+    if (plOSFile::ExistsFile(out_sEntryAssembly))
+      return plStatus(PL_SUCCESS);
+  }
+
   plProcessOptions options;
   options.m_sProcess = "dotnet";
   options.AddArgument("msbuild");
@@ -1332,6 +1379,33 @@ plStatus plCSharpProjectAssetDocument::GatherSourceHashes(plStringView sSourceRo
   return plStatus(PL_SUCCESS);
 }
 
+plStatus plCSharpProjectAssetDocument::HashFileContents(plStringView sFile, plUInt64& out_uiHash) const
+{
+  // Seeded, so an empty file does not fingerprint as 0 - which is also the "never fingerprinted" value
+  // every cached hash starts out at.
+  plUInt64 uiHash = 0x9E3779B97F4A7C15ULL;
+  out_uiHash = 0;
+
+  plOSFile file;
+  if (file.Open(sFile, plFileOpenMode::Read).Failed())
+    return plStatus(plFmt("Could not open '{}' to fingerprint it.", sFile));
+
+  plDynamicArray<plUInt8> buffer;
+  buffer.SetCountUninitialized(64 * 1024);
+
+  while (true)
+  {
+    const plUInt64 uiRead = file.Read(buffer.GetData(), buffer.GetCount());
+    if (uiRead == 0)
+      break;
+
+    uiHash = plHashingUtils::xxHash64(buffer.GetData(), static_cast<size_t>(uiRead), uiHash);
+  }
+
+  out_uiHash = uiHash;
+  return plStatus(PL_SUCCESS);
+}
+
 plStatus plCSharpProjectAssetDocument::ReadTextFile(plStringView sFile, plStringBuilder& out_sText) const
 {
   plFileReader reader;
@@ -1494,7 +1568,7 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
 plStatus plCSharpProjectAssetDocument::UpdateBuildCache(plObjectCommandAccessor& accessor, plStringView sDescriptorJson,
   const plDynamicArray<plString>& sourceFiles,
   const plDynamicArray<plUInt64>& sourceHashes, const plDynamicArray<plString>& buildFiles, plStringView sEntryAssembly,
-  plUInt64 uiSchemaHash, plStringView sDiagnostics)
+  plUInt64 uiSchemaHash, plUInt64 uiProjectFileHash, plUInt64 uiEntryAssemblyHash, plStringView sDiagnostics)
 {
   if (sourceFiles.GetCount() != sourceHashes.GetCount())
     return plStatus("The C# source compilation receipt is incomplete.");
@@ -1503,6 +1577,8 @@ plStatus plCSharpProjectAssetDocument::UpdateBuildCache(plObjectCommandAccessor&
   if (accessor.SetValueByName(pObject, "LastGoodDescriptorJson", sDescriptorJson).Failed() ||
       accessor.SetValueByName(pObject, "LastGoodEntryAssembly", sEntryAssembly).Failed() ||
       accessor.SetValueByName(pObject, "LastGoodBindingSchemaHash", uiSchemaHash).Failed() ||
+      accessor.SetValueByName(pObject, "LastGoodProjectFileHash", uiProjectFileHash).Failed() ||
+      accessor.SetValueByName(pObject, "LastGoodEntryAssemblyHash", uiEntryAssemblyHash).Failed() ||
       accessor.SetValueByName(pObject, "BuildDiagnostics", sDiagnostics).Failed() ||
       accessor.ClearByName(pObject, "LastGoodSources").Failed() ||
       accessor.ClearByName(pObject, "LastGoodSourceHashes").Failed() ||
@@ -1571,6 +1647,18 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   plProgressRange progress("Compiling C# Scripts", 6, false);
   progress.BeginNextStep("Checking C# source changes");
 
+  // Per-stage timing. The inner loop is meant to stay close to a single 'dotnet build', so a stage
+  // quietly growing back is the regression worth catching, and it only shows up if it is measured.
+  plTime stageStart = plTime::Now();
+  plStringBuilder stageTimings;
+  const auto stage = [&stageStart, &stageTimings](plStringView sName)
+  {
+    const plTime now = plTime::Now();
+    stageTimings.AppendFormat("{}{} {}ms", stageTimings.IsEmpty() ? "" : ", ", sName,
+      plArgF((now - stageStart).GetMilliseconds(), 0));
+    stageStart = now;
+  };
+
   const bool bHadLastGoodOutput = plOSFile::ExistsFile(szTargetFile);
   const auto preserveLastGood = [](plStringView sMessage) -> plTransformStatus
   {
@@ -1622,6 +1710,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   progress.BeginNextStep("Generating C# engine bindings");
   if (status.Succeeded())
     status = ExportBindingManifest(bindingManifest, m_uiPreparedBindingSchemaHash);
+  stage("bindings");
 
   plStringBuilder compileStep;
   compileStep.SetFormat("Compiling {} C# source file(s) ({})", sourceFiles.GetCount(),
@@ -1634,19 +1723,50 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
     status = RunProjectBuild(
       projectFile, bindingManifest, stagingDirectory, diagnostics);
   }
+  stage("build");
 
   progress.BeginNextStep("Discovering C# script classes");
+
+  // The project file is rewritten by RunProjectBuild's migration step, so it is only worth
+  // fingerprinting afterwards.
+  plUInt64 uiProjectFileHash = 0;
+  if (status.Succeeded())
+    status = HashFileContents(projectFile, uiProjectFileHash);
+
+  const plCSharpProjectAssetProperties* pCachedProperties = GetProperties();
+  const plStringView cachedTargetFileName =
+    (uiProjectFileHash != 0 && uiProjectFileHash == pCachedProperties->m_uiLastGoodProjectFileHash)
+      ? pCachedProperties->m_sLastGoodEntryAssembly.GetView()
+      : plStringView();
+
   plStringBuilder entryAssemblyPath;
   if (status.Succeeded())
-    status = FindEntryAssembly(projectFile, stagingDirectory, entryAssemblyPath);
+    status = FindEntryAssembly(projectFile, stagingDirectory, cachedTargetFileName, entryAssemblyPath);
+
+  plUInt64 uiEntryAssemblyHash = 0;
+  if (status.Succeeded())
+    status = HashFileContents(entryAssemblyPath, uiEntryAssemblyHash);
+
+  // Builds are deterministic, so identical sources produce identical IL. The inspector only ever reads
+  // the descriptor table baked into this assembly, and that cannot have changed if the bytes did not.
+  const bool bReuseDescriptors = status.Succeeded() && uiEntryAssemblyHash != 0 &&
+                                 uiEntryAssemblyHash == pCachedProperties->m_uiLastGoodEntryAssemblyHash &&
+                                 !pCachedProperties->m_sLastGoodDescriptorJson.IsEmpty();
 
   plStringBuilder descriptorFile(stagingDirectory, "/Plasma.ScriptDescriptors.json");
-  if (status.Succeeded())
-    status = RunInspector(entryAssemblyPath, descriptorFile, diagnostics);
-
   plStringBuilder descriptorJson;
-  if (status.Succeeded())
-    status = ReadTextFile(descriptorFile, descriptorJson);
+  if (bReuseDescriptors)
+  {
+    descriptorJson = pCachedProperties->m_sLastGoodDescriptorJson;
+  }
+  else
+  {
+    if (status.Succeeded())
+      status = RunInspector(entryAssemblyPath, descriptorFile, diagnostics);
+    if (status.Succeeded())
+      status = ReadTextFile(descriptorFile, descriptorJson);
+  }
+  stage(bReuseDescriptors ? "inspect (cached)" : "inspect");
 
   if (status.Succeeded())
     status = plCSharpProjectDescriptors::Parse(descriptorJson, GetGuid(), m_sPreparedEntryAssembly, m_PreparedClasses);
@@ -1658,6 +1778,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   plDynamicArray<plString> buildFiles;
   if (status.Succeeded())
     status = GatherBuildFiles(stagingDirectory, m_PreparedFiles, buildFiles);
+  stage("package");
 
   progress.BeginNextStep("Updating C# script asset status");
   plDynamicArray<plString> verifiedSourceFiles;
@@ -1686,18 +1807,31 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
 
   if (status.Failed())
   {
+    // Logged as an error in its own right. A stage that fails after the compiler succeeded - the
+    // inspector, packaging, the source re-check - leaves no compiler diagnostic behind, and
+    // LogBuildOutput only promotes lines that look like compiler errors. Without this the log says
+    // the build failed and nothing about which step or why.
+    plLog::Error("C# build failed during '{}': {}", stageTimings.IsEmpty() ? plStringView("startup") : stageTimings.GetView(),
+      status.m_sMessage);
+
     LogBuildOutput(diagnostics, true);
 
     if (!transformFlags.IsSet(plTransformFlags::BackgroundProcessing))
       UpdateDiagnostics(diagnostics);
 
+    // The compiler's own errors travel with the status. Everything logged above went to whichever
+    // process ran the transform, and for a background build that is the asset processor - a log
+    // nobody has open. The status is the one thing that reaches the editor.
+    plStringBuilder failureMessage = status.m_sMessage;
+    AppendBuildErrors(diagnostics, failureMessage);
+
     if (bHadLastGoodOutput)
     {
       plLog::Warning("C# build failed; keeping the last-known-good project container '{}'.", szTargetFile);
-      return preserveLastGood("C# build failed; kept the last-known-good output.");
+      failureMessage.Append("\nKept the last-known-good output.");
     }
 
-    return preserveLastGood(status.m_sMessage.GetView());
+    return preserveLastGood(failureMessage);
   }
 
   LogBuildOutput(diagnostics, false);
@@ -1709,7 +1843,9 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
     pProperties->m_LastGoodSourceHashes != sourceHashes ||
     pProperties->m_LastGoodFiles != buildFiles ||
     pProperties->m_sLastGoodEntryAssembly != m_sPreparedEntryAssembly ||
-    pProperties->m_uiLastGoodBindingSchemaHash != m_uiPreparedBindingSchemaHash;
+    pProperties->m_uiLastGoodBindingSchemaHash != m_uiPreparedBindingSchemaHash ||
+    pProperties->m_uiLastGoodProjectFileHash != uiProjectFileHash ||
+    pProperties->m_uiLastGoodEntryAssemblyHash != uiEntryAssemblyHash;
   const bool bDiagnosticsChanged = pProperties->m_sBuildDiagnostics != diagnostics;
 
   if ((bDescriptorCacheChanged || bDiagnosticsChanged) &&
@@ -1724,7 +1860,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
     accessor.StartTransaction("Update C# Build Cache");
     status = UpdateBuildCache(
       accessor, descriptorJson, sourceFiles, sourceHashes, buildFiles, m_sPreparedEntryAssembly,
-      m_uiPreparedBindingSchemaHash, diagnostics);
+      m_uiPreparedBindingSchemaHash, uiProjectFileHash, uiEntryAssemblyHash, diagnostics);
     if (status.Failed())
     {
       accessor.CancelTransaction();
@@ -1759,6 +1895,9 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
 
   if (bDescriptorCacheChanged)
     RefreshCSharpSourceAssets();
+
+  stage("write");
+  plLog::Dev("C# transform stages: {}", stageTimings);
 
   plLog::Success("Compiled C# scripts successfully. {} source asset(s) are up to date.", sourceFiles.GetCount());
 
@@ -1959,7 +2098,8 @@ plTransformStatus plCSharpProjectAssetDocument::BuildProject()
   const plStatus status = UpdateSourceDependencyStamp();
   if (status.Failed())
   {
-    plQtUiServices::ShowGlobalStatusBarMessage("C# compilation could not start. See the log for details.");
+    plQtUiServices::ShowGlobalStatusBarMessage(
+      "C# compilation could not start. See the log for details.", plQtUiServices::Event::TextType::Error);
     return plTransformStatus(status);
   }
 
@@ -1968,11 +2108,13 @@ plTransformStatus plCSharpProjectAssetDocument::BuildProject()
   {
     RefreshCSharpSourceAssets();
     plQtUiServices::ShowGlobalStatusBarMessage(
-      plFmt("C# compilation succeeded. {} script file(s) are up to date.", GetProperties()->m_LastGoodSources.GetCount()));
+      plFmt("C# compilation succeeded. {} script file(s) are up to date.", GetProperties()->m_LastGoodSources.GetCount()),
+      plQtUiServices::Event::TextType::Success);
   }
   else
   {
-    plQtUiServices::ShowGlobalStatusBarMessage("C# compilation failed. See the log for compiler diagnostics.");
+    plQtUiServices::ShowGlobalStatusBarMessage(
+      "C# compilation failed. See the log for compiler diagnostics.", plQtUiServices::Event::TextType::Error);
   }
 
   return result;

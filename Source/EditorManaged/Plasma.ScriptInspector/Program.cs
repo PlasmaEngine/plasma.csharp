@@ -14,6 +14,8 @@ internal static class Program
     {
         try
         {
+            ResolveScriptCoreFromPayload();
+
             if (!TryReadArguments(args, out string assemblyPath, out string outputPath))
             {
                 Console.Error.WriteLine(
@@ -29,6 +31,33 @@ internal static class Program
             Console.Error.WriteLine(exception);
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Loads Plasma.ScriptCore from the payload root rather than from beside this tool.
+    /// </summary>
+    /// <remarks>
+    /// The tool lives in CSharp/Tools and the runtime's ScriptCore lives one level up in CSharp. A
+    /// second copy used to be published beside the tool, which meant two files that had to stay in
+    /// step - and when they did not, the tool reflected over a game assembly built against a
+    /// ScriptCore it could not see, and reported every new type as missing. There is now one copy,
+    /// and this resolves to it.
+    /// </remarks>
+    private static void ResolveScriptCoreFromPayload()
+    {
+        string toolDirectory = AppContext.BaseDirectory;
+        string payloadDirectory = Path.GetFullPath(Path.Combine(toolDirectory, ".."));
+
+        AssemblyLoadContext.Default.Resolving += (context, name) =>
+        {
+            if (name.Name is null)
+            {
+                return null;
+            }
+
+            string candidate = Path.Combine(payloadDirectory, name.Name + ".dll");
+            return File.Exists(candidate) ? context.LoadFromAssemblyPath(candidate) : null;
+        };
     }
 
     private static bool TryReadArguments(

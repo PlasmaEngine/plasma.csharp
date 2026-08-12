@@ -33,16 +33,28 @@ namespace
 
 plStringBuilder plCSharpEditorPaths::FindPayloadRoot()
 {
-  const plStringBuilder sPluginDir = GetPluginDirectory();
-  if (!sPluginDir.IsEmpty())
+  // Beside the plugin first, then upwards, then the application directory. Walking up matters
+  // because plPlugin runs a DLL from a copy at "<plugin dir>/loaded/<N>/", which leaves the module
+  // two directories below the payload that shipped with it.
+  constexpr plUInt32 uiMaxParentLevels = 4;
+
+  plStringBuilder sDirectory = GetPluginDirectory();
+  for (plUInt32 uiLevel = 0; uiLevel < uiMaxParentLevels && !sDirectory.IsEmpty(); ++uiLevel)
   {
-    plStringBuilder sCandidate(sPluginDir);
+    plStringBuilder sCandidate(sDirectory);
     sCandidate.AppendPath("CSharp");
 
     if (plOSFile::ExistsDirectory(sCandidate))
     {
-      return sPluginDir;
+      return sDirectory;
     }
+
+    const plStringBuilder sPrevious = sDirectory;
+    sDirectory.PathParentDirectory();
+    sDirectory.MakeCleanPath();
+
+    if (sDirectory == sPrevious)
+      break;
   }
 
   plStringBuilder sAppDir = plOSFile::GetApplicationDirectory();

@@ -8,10 +8,14 @@ E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Too
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Bin\Windows_x64_Development\CSharp\Tools\Plasma.ScriptInspector.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.csproj.AssemblyReference.cache
-E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.S.DB620C03.Up2Date
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\refint\Plasma.ScriptInspector.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.pdb
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.genruntimeconfig.cache
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\ref\Plasma.ScriptInspector.dll
 E:\PlasmaTech\LocalPackages\plasma.csharp\Source\EditorManaged\Plasma.ScriptInspector\obj\Release\net10.0\Plasma.ScriptInspector.sourcelink.json
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptInspector.exe
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptInspector.deps.json
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptInspector.runtimeconfig.json
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptInspector.dll
+C:\Users\drago\AppData\Local\Temp\claude\E--PlasmaTech-PlasmaEngine2\a1a2a958-a158-4201-ba37-721b99f5c1e4\scratchpad\inspout\Plasma.ScriptInspector.pdb

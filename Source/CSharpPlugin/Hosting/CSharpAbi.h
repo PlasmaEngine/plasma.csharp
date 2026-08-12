@@ -180,6 +180,165 @@ struct plCSharpWorldApiV1
     plCSharpMessageRouting routing) = nullptr;
 };
 
+// Debug-renderer value types. These mirror plVec3/plColor/plTransform and plDebugRenderer's Line and
+// Triangle exactly, so arrays cross the boundary as raw memory and are reinterpreted rather than
+// converted. CSharpDebugApi.cpp static_asserts every one of these against the engine type it mirrors.
+
+struct plCSharpDebugVec2
+{
+  float m_fX = 0.0f;
+  float m_fY = 0.0f;
+};
+
+struct plCSharpDebugVec3
+{
+  float m_fX = 0.0f;
+  float m_fY = 0.0f;
+  float m_fZ = 0.0f;
+};
+
+struct plCSharpDebugColor
+{
+  float m_fR = 0.0f;
+  float m_fG = 0.0f;
+  float m_fB = 0.0f;
+  float m_fA = 1.0f;
+};
+
+struct plCSharpDebugTransform
+{
+  plCSharpDebugVec3 m_Position;
+  float m_Rotation[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+  plCSharpDebugVec3 m_Scale = {1.0f, 1.0f, 1.0f};
+};
+
+struct plCSharpDebugLine
+{
+  plCSharpDebugVec3 m_Start;
+  plCSharpDebugVec3 m_End;
+  plCSharpDebugColor m_StartColor;
+  plCSharpDebugColor m_EndColor;
+};
+
+struct plCSharpDebugTriangle
+{
+  plCSharpDebugVec3 m_Positions[3];
+  plCSharpDebugColor m_Color;
+};
+
+enum class plCSharpDebugLineMode : plUInt32
+{
+  World = 0,
+  /// Always on top of scene geometry, with distance fade-out.
+  Occluded = 1,
+  /// Screen space; coordinates are pixels.
+  Screen2D = 2,
+};
+
+enum class plCSharpDebugBoxStyle : plUInt32
+{
+  Lines = 0,
+  Solid = 1,
+  Corners = 2,
+};
+
+/// Direct debug-rendering entry points, kept behind QueryExtension like plCSharpWorldApiV1.
+///
+/// These exist next to the reflected plScriptExtensionClass_Debug bindings rather than replacing
+/// them: the reflected path boxes every argument and allocates per call, which is the wrong shape for
+/// something invoked once per drawn line. The world is taken from the active script execution scope,
+/// so it is never passed across the boundary.
+struct plCSharpDebugApiV1
+{
+  plUInt32 m_uiSize = sizeof(plCSharpDebugApiV1);
+  plUInt32 m_uiVersion = 1;
+
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawLines)(const plCSharpDebugLine* pLines, plUInt32 uiCount,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform, plCSharpDebugLineMode mode) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_AddPersistentLines)(const plCSharpDebugLine* pLines, plUInt32 uiCount,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform, double fDurationSeconds) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawTriangles)(const plCSharpDebugTriangle* pTriangles, plUInt32 uiCount,
+    plCSharpDebugColor color) = nullptr;
+
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawCross)(plCSharpDebugVec3 vPosition, float fLineLength,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawBox)(plCSharpDebugVec3 vCenter, plCSharpDebugVec3 vHalfExtents,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform, plCSharpDebugBoxStyle style,
+    float fCornerFraction) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawSphere)(plCSharpDebugVec3 vCenter, float fRadius,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawCapsuleZ)(float fLength, float fRadius,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawCylinderZ)(float fLength, float fRadius,
+    plCSharpDebugColor color, const plCSharpDebugTransform* pTransform) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawFrustum)(const plCSharpDebugTransform* pTransform,
+    float fFovXDegrees, float fFovYDegrees, float fNear, float fFar, plCSharpDebugColor color,
+    plUInt32 bDrawPlaneNormals) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawCylinder)(float fRadiusStart, float fRadiusEnd, float fLength,
+    plCSharpDebugColor solidColor, plCSharpDebugColor lineColor, const plCSharpDebugTransform* pTransform,
+    plUInt32 bCapStart, plUInt32 bCapEnd, plUInt32 uiCylinderAxis) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawArrow)(float fSize, plCSharpDebugColor color,
+    const plCSharpDebugTransform* pTransform, plCSharpDebugVec3 vForwardAxis) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawAngle)(float fStartDegrees, float fEndDegrees,
+    plCSharpDebugColor solidColor, plCSharpDebugColor lineColor, const plCSharpDebugTransform* pTransform,
+    plCSharpDebugVec3 vForwardAxis, plCSharpDebugVec3 vRotationAxis) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawOpeningCone)(float fHalfAngleDegrees, plCSharpDebugColor colorInside,
+    plCSharpDebugColor colorOutside, const plCSharpDebugTransform* pTransform, plCSharpDebugVec3 vForwardAxis) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawLimitCone)(float fHalfAngle1Degrees, float fHalfAngle2Degrees,
+    plCSharpDebugColor solidColor, plCSharpDebugColor lineColor, const plCSharpDebugTransform* pTransform) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawRectangle2D)(float fX, float fY, float fWidth, float fHeight,
+    float fDepth, plCSharpDebugColor color, plUInt32 bLinesOnly) = nullptr;
+
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawText2D)(plCSharpUtf8Span text, plInt32 iPositionX, plInt32 iPositionY,
+    plUInt32 uiSizeInPixel, plUInt32 uiHorizontalAlignment, plUInt32 uiVerticalAlignment,
+    plCSharpDebugColor color, plUInt32* out_pLineCount) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawText3D)(plCSharpUtf8Span text, plCSharpDebugVec3 vPosition,
+    plUInt32 uiSizeInPixel, plUInt32 uiHorizontalAlignment, plUInt32 uiVerticalAlignment,
+    plUInt32 bDepthTest, plCSharpDebugColor color, plUInt32* out_pLineCount) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawText3DInWorld)(plCSharpUtf8Span text,
+    const plCSharpDebugTransform* pTransform, float fGlyphSize, plUInt32 uiHorizontalAlignment,
+    plUInt32 uiVerticalAlignment, plCSharpDebugColor color, plUInt32* out_pLineCount) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawInfoText)(plUInt32 uiPlacement, plCSharpUtf8Span groupName,
+    plCSharpUtf8Span text, plCSharpDebugColor color) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_AddPersistentInfoText)(plUInt32 uiPlacement, plCSharpUtf8Span text,
+    double fDurationSeconds, plCSharpDebugColor color) = nullptr;
+
+  plCSharpStatus(PL_CSHARP_CALL* m_AddPersistentCross)(float fSize, plCSharpDebugColor color,
+    const plCSharpDebugTransform* pTransform, double fDurationSeconds) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_AddPersistentSphere)(float fRadius, plCSharpDebugColor color,
+    const plCSharpDebugTransform* pTransform, double fDurationSeconds) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_AddPersistentBox)(plCSharpDebugVec3 vHalfExtents, plCSharpDebugColor color,
+    const plCSharpDebugTransform* pTransform, double fDurationSeconds) = nullptr;
+
+  plCSharpStatus(PL_CSHARP_CALL* m_GetTextMetrics)(plUInt32 uiSizeInPixel, float* out_pGlyphWidth,
+    float* out_pLineHeight, float* out_pTextScale) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_SetTextScale)(float fScale) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_GetResolution)(plCSharpDebugVec2* out_pResolution) = nullptr;
+};
+
+/// Console output exposed to managed code, behind the native QueryExtension.
+struct plCSharpConsoleApiV1
+{
+  plUInt32 m_uiSize = sizeof(plCSharpConsoleApiV1);
+  plUInt32 m_uiVersion = 1;
+
+  /// \a uiLineType is a plConsoleString::Type.
+  plCSharpStatus(PL_CSHARP_CALL* m_Print)(plUInt32 uiLineType, plCSharpUtf8Span text) = nullptr;
+};
+
+/// Managed console operations, behind the managed QueryExtension.
+struct plCSharpManagedConsoleApiV1
+{
+  plUInt32 m_uiSize = sizeof(plCSharpManagedConsoleApiV1);
+  plUInt32 m_uiVersion = 1;
+
+  plCSharpStatus(PL_CSHARP_CALL* m_InvokeCommand)(plUInt64 uiGeneration, plUInt64 uiCommandId,
+    const plCSharpValue* pArguments, plUInt32 uiArgumentCount) = nullptr;
+
+  /// Draws one console tool. Called from inside the console's ImGui frame, on the main thread.
+  plCSharpStatus(PL_CSHARP_CALL* m_DrawTool)(plUInt64 uiGeneration, plUInt64 uiToolId) = nullptr;
+};
+
 /// Managed operations exposed to the native script-resource backend.
 struct plCSharpManagedApiV1
 {
@@ -225,3 +384,9 @@ static_assert(sizeof(plCSharpObjectHandle) == 24);
 static_assert(sizeof(plCSharpValue) == 24);
 static_assert(sizeof(plCSharpGenerationLoadDesc) == 48);
 static_assert(sizeof(plCSharpInstanceCreateDesc) == 96);
+static_assert(sizeof(plCSharpDebugVec2) == 8);
+static_assert(sizeof(plCSharpDebugVec3) == 12);
+static_assert(sizeof(plCSharpDebugColor) == 16);
+static_assert(sizeof(plCSharpDebugTransform) == 40);
+static_assert(sizeof(plCSharpDebugLine) == 56);
+static_assert(sizeof(plCSharpDebugTriangle) == 52);

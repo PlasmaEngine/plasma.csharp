@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../CSharpPlugin/Managed/Plasma.ScriptCore/Plasma.ScriptCore.csproj" />
+    <!-- Private=false: the tool is published into CSharp/Tools and resolves ScriptCore from the
+         payload root one level up. Copying it here as well produced a second file that silently went
+         stale, and the tool then failed to load types the game assembly was built against. -->
+    <ProjectReference Include="../../CSharpPlugin/Managed/Plasma.ScriptCore/Plasma.ScriptCore.csproj"
+                      Private="false" />
   </ItemGroup>
 </Project>

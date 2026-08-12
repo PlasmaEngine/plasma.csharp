@@ -86,6 +86,12 @@ public static class StableId
     public static ulong MessageHandler(string fullyQualifiedTypeName, string methodName, string nativeMessageType) =>
         Hash($"pl-csharp/message/v1:{fullyQualifiedTypeName}|{methodName}|{nativeMessageType}");
 
+    public static ulong ConsoleCommand(string commandName) =>
+        Hash($"pl-csharp/console-command/v1:{commandName}");
+
+    public static ulong ConsoleTool(string toolName) =>
+        Hash($"pl-csharp/console-tool/v1:{toolName}");
+
     public static ulong CustomMessage(Type messageType)
     {
         ArgumentNullException.ThrowIfNull(messageType);
