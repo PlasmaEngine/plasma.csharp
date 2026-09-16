@@ -2,15 +2,48 @@
 
 #include <CSharpPlugin/Hosting/CSharpHost.h>
 #include <CSharpPlugin/Runtime/CSharpConsoleRegistry.h>
+#include <CSharpPlugin/Runtime/CSharpObjectRegistry.h>
 #include <CSharpPlugin/Runtime/CSharpProjectRuntime.h>
 
 #include <Core/Console/Console.h>
+#include <Core/GameApplication/GameApplicationBase.h>
+#include <Core/World/World.h>
 #include <Foundation/IO/JSONReader.h>
 #include <Foundation/IO/MemoryStream.h>
 #include <Foundation/Utilities/ConversionUtils.h>
+#include <GameEngine/GameState/GameState.h>
 
 namespace
 {
+  /// Marks a world for writing for as long as it is in scope, and does nothing without one.
+  ///
+  /// Console tools draw between the world update and view extraction, where nothing holds the
+  /// marker, so any binding call would trip plWorld's access check. Write rather than read access,
+  /// because a tool that only inspects is the narrower case - the same window is where the engine
+  /// itself takes the marker for post-update work.
+  class ScopedWorldWrite
+  {
+  public:
+    explicit ScopedWorldWrite(plWorld* pWorld)
+      : m_pWorld(pWorld)
+    {
+      if (m_pWorld != nullptr)
+        m_pWorld->GetWriteMarker().Lock();
+    }
+
+    ~ScopedWorldWrite()
+    {
+      if (m_pWorld != nullptr)
+        m_pWorld->GetWriteMarker().Unlock();
+    }
+
+    ScopedWorldWrite(const ScopedWorldWrite&) = delete;
+    ScopedWorldWrite& operator=(const ScopedWorldWrite&) = delete;
+
+  private:
+    plWorld* m_pWorld = nullptr;
+  };
+
   /// Mirrors Plasma.ScriptCommandParameterKind. The set is deliberately small: the console's command
   /// interpreter is Lua and only marshals these through plVariant.
   plVariantType::Enum ToVariantType(plUInt64 uiKind)
@@ -202,6 +235,13 @@ plCSharpConsoleTool::plCSharpConsoleTool(plStringView sName, plStringView sCateg
 {
 }
 
+plCSharpConsoleTool::~plCSharpConsoleTool()
+{
+  auto& registry = plCSharpObjectRegistry::GetSingleton();
+  for (const plCSharpObjectHandle& handle : m_BorrowedHandles)
+    registry.UnregisterObject(handle);
+}
+
 void plCSharpConsoleTool::OnDrawImGui()
 {
   if (m_uiFailureCount >= 3)
@@ -214,6 +254,19 @@ void plCSharpConsoleTool::OnDrawImGui()
     return;
   }
 
+  // Tools draw from the console's ImGui frame rather than from a world update, so nothing has put a
+  // world on the stack. Without one every binding call is rejected as InvalidArgument, which is what
+  // a tool that only reads the game state hits first. The game state's world is the one a tool is
+  // about; a tool that only draws ImGui is unaffected when there is none.
+  plWorld* pWorld = nullptr;
+  if (plGameApplicationBase* pApp = plGameApplicationBase::GetGameApplicationBaseInstance())
+  {
+    if (auto* pGameState = plDynamicCast<plGameState*>(pApp->GetActiveGameState()))
+      pWorld = pGameState->GetMainWorld();
+  }
+
+  ScopedWorldWrite worldAccess(pWorld);
+  plCSharpExecutionScope scope(pWorld, &m_BorrowedHandles);
   const plCSharpStatus status = pApi->m_DrawTool(m_uiGeneration, m_uiToolId);
   if (status == plCSharpStatus::Success)
   {

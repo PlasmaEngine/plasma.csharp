@@ -31,6 +31,9 @@ public abstract class ComponentScript
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void __Detach()
     {
+        SaveGame.DisposeOwned(this);
+        GameSettings.DisposeOwned(this);
+        Platform.DisposeOwned(this);
         Owner = default;
         World = default;
         OwnerComponent = default;

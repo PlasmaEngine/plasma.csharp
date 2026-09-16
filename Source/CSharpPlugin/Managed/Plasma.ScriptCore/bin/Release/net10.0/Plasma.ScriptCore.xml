@@ -329,6 +329,14 @@
             text is drawn every frame, so the common short label must not touch the heap.
             </summary>
         </member>
+        <member name="T:Plasma.GameSettingsDraft">
+            <summary>A complete settings draft. Keys and supported values are returned by Describe().</summary>
+        </member>
+        <member name="T:Plasma.GameSettings">
+            <summary>Client of the application-owned service. Apply queues work at a safe native frame
+            boundary. Call Update from your script update to receive state events. Dispose on menu close
+            to cancel an owned display preview. The native timeout continues even without Update.</summary>
+        </member>
         <member name="T:Plasma.ImGui">
             <summary>
             Dear ImGui, bound from the engine's own vendored header. Only call these from inside a
@@ -369,8 +377,64 @@
         <member name="T:Plasma.Utf8Span">
             <summary>A borrowed, non-owning view of UTF-8 bytes. Matches <c>plCSharpUtf8Span</c>.</summary>
         </member>
+        <member name="T:Plasma.PlatformError">
+            <summary>Mirrors plPlatformError; the bridge reports these by name.</summary>
+        </member>
+        <member name="T:Plasma.PlatformEvent">
+            <summary>One plPlatformEvent. Type is the native type name ("SignedIn", "LobbyMemberJoined", ...).</summary>
+        </member>
+        <member name="M:Plasma.PlatformEvent.#ctor(System.String,System.String,System.String,System.String,System.String,System.String,System.Text.Json.JsonElement,System.UInt32,System.Boolean)">
+            <summary>One plPlatformEvent. Type is the native type name ("SignedIn", "LobbyMemberJoined", ...).</summary>
+        </member>
+        <member name="T:Plasma.Platform">
+            <summary>
+            Client of the application-owned platform hub (identity, achievements, stats, leaderboards, friends,
+            presence, lobbies, matchmaking, entitlements, overlay). Synchronous members answer from the hub's caches;
+            asynchronous ones return a Task that Update completes on the engine thread, so call Update every frame.
+            Events arrive through EventReceived while Update runs and someone is subscribed. Dispose on script teardown.
+            </summary>
+        </member>
+        <member name="E:Plasma.Platform.EventReceived">
+            <summary>Raised from Update for every hub event taken since the last call.</summary>
+        </member>
+        <member name="P:Plasma.Platform.LocalUser">
+            <summary>The signed-in user, or null.</summary>
+        </member>
+        <member name="M:Plasma.Platform.UnlockAchievement(System.String)">
+            <summary>True on the first unlock; false when already unlocked, unknown or unsupported.</summary>
+        </member>
+        <member name="P:Plasma.Platform.CurrentLobby">
+            <summary>The lobby the local user is in, or null.</summary>
+        </member>
+        <member name="M:Plasma.Platform.MatchmakeAsync(System.UInt32,System.Collections.Generic.IEnumerable{Plasma.LobbyFilter},System.Threading.CancellationToken)">
+            <summary>Completes with the ticket once a lobby is found; the local user is in it. Cancellation asks the
+            matcher to stop.</summary>
+        </member>
+        <member name="M:Plasma.Platform.Update">
+            <summary>Polls outstanding operations and takes queued events. Call once per frame on the script thread.</summary>
+        </member>
+        <member name="M:Plasma.Platform.Request``1(System.String,System.Object,System.Func{System.Text.Json.JsonElement,``0},System.Threading.CancellationToken,System.String)">
+            <summary>Issues a bridge command. A response carrying an Operation id is polled from Update; any other
+            response is treated as an immediate result.</summary>
+        </member>
+        <member name="M:Plasma.Platform.ParseUser(System.Text.Json.JsonElement)">
+            <summary>Accepts a user dictionary or a bare canonical id.</summary>
+        </member>
         <member name="T:Plasma.ReflectedCall">
             <summary>Generic reflected invocation path used by generated engine wrappers.</summary>
+        </member>
+        <member name="T:Plasma.SaveGame">
+            <summary>
+            Main-thread client for the game-state-owned Save/Load service. Call Update each frame,
+            and Dispose during shutdown/script reload. Saving captures the world of the current script call.
+            Continuations are completed by Update on the engine thread; no worker touches managed game state.
+            </summary>
+        </member>
+        <member name="M:Plasma.SaveGame.FromGameState(Plasma.ComponentScript)">
+            <summary>Gets a client for the active game state's initialized save service.</summary>
+        </member>
+        <member name="M:Plasma.SaveGame.RegisterScript(System.String,System.UInt32,System.String[])">
+            <summary>Opt in named public script fields under a stable, versioned native graph schema.</summary>
         </member>
         <member name="T:Plasma.IScriptDescriptorProvider">
             <summary>Implemented by generated code in the collectible project assembly.</summary>

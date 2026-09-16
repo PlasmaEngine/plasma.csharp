@@ -109,6 +109,9 @@ public static unsafe class NativeBridge
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static void Reset()
     {
+        SaveGame.ResetAll();
+        GameSettings.ResetAll();
+        Platform.ResetAll();
         s_configured = false;
         s_api = default;
         s_worldApi = default;

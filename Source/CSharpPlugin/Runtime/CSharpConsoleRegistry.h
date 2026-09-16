@@ -57,6 +57,7 @@ class PL_CSHARPPLUGIN_DLL plCSharpConsoleTool : public plConsoleTool
 public:
   plCSharpConsoleTool(plStringView sName, plStringView sCategory, bool bPinned,
     plUInt64 uiGeneration, plUInt64 uiToolId);
+  ~plCSharpConsoleTool();
 
   virtual void OnDrawImGui() override;
   virtual bool IsPinned() const override { return m_bPinned; }
@@ -67,6 +68,9 @@ private:
   plUInt64 m_uiToolId = 0;
   /// A tool that fails repeatedly is dropped rather than logging once per frame forever.
   plUInt8 m_uiFailureCount = 0;
+  /// Native objects handed to managed code during OnDraw. Deduplicated across frames by the
+  /// execution scope, so a tool that reads the same object every frame registers it once.
+  plDynamicArray<plCSharpObjectHandle> m_BorrowedHandles;
 };
 
 /// Creates and destroys the console functions a script generation declares.

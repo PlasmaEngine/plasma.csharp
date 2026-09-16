@@ -511,6 +511,8 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
   sPrivateHostFxr.AppendPath("host/fxr/10.0.10/hostfxr.dll");
   const bool bUsePrivateRuntime = plOSFile::ExistsFile(sPrivateHostFxr);
 
+  // CoreCLR requires native Windows absolute paths in its trusted assembly list.
+  sPrivateDotNetRoot.ReplaceAll("/", "\\");
   plStringWChar privateDotNetRootWide(sPrivateDotNetRoot);
   get_hostfxr_parameters hostFxrParameters = {};
   hostFxrParameters.size = sizeof(hostFxrParameters);
@@ -522,8 +524,8 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
     get_hostfxr_path(szHostFxrPath, &uiHostFxrPathLength, bUsePrivateRuntime ? &hostFxrParameters : nullptr);
   if (iPathResult != 0)
   {
-    plLog::Error("C# host could not resolve hostfxr (0x{:08X}). Install .NET 10 or deploy the private DotNet runtime.",
-      static_cast<plUInt32>(iPathResult));
+    plLog::Error("C# host could not resolve hostfxr (0x{}). Install .NET 10 or deploy the private DotNet runtime.",
+      plArgU(static_cast<plUInt32>(iPathResult), 8, true, 16, true));
     return PL_FAILURE;
   }
 
@@ -575,8 +577,9 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
     {
       setErrorWriter(pPreviousErrorWriter);
     }
-    plLog::Error("C# hostfxr failed to initialize '{}' (0x{:08X}).",
-      sRuntimeConfig, static_cast<plUInt32>(iInitializeResult));
+    plLog::Error("C# hostfxr at '{}' failed to initialize '{}' (0x{}).",
+      plStringUtf8(szHostFxrPath).GetData(), sRuntimeConfig,
+      plArgU(static_cast<plUInt32>(iInitializeResult), 8, true, 16, true));
     if (pHostContext != nullptr)
       closeHostContext(pHostContext);
     FreeLibrary(pHostFxr);
@@ -598,8 +601,10 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
 
   if (!IsHostSuccess(iDelegateResult) || loadAssembly == nullptr)
   {
-    plLog::Error("C# hostfxr could not provide load_assembly_and_get_function_pointer (0x{:08X}).",
-      static_cast<plUInt32>(iDelegateResult));
+    plLog::Error("C# hostfxr at '{}' could not provide load_assembly_and_get_function_pointer (0x{}), using {} runtime resolution.",
+      plStringUtf8(szHostFxrPath).GetData(),
+      plArgU(static_cast<plUInt32>(iDelegateResult), 8, true, 16, true),
+      bUsePrivateRuntime ? "private" : "registered");
     return PL_FAILURE;
   }
 
@@ -614,8 +619,8 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
     reinterpret_cast<void**>(&initializeManaged));
   if (iLoadResult != 0 || initializeManaged == nullptr)
   {
-    plLog::Error("C# host could not load the managed bootstrap entry point (0x{:08X}).",
-      static_cast<plUInt32>(iLoadResult));
+    plLog::Error("C# host could not load the managed bootstrap entry point from '{}' (0x{}).",
+      sManagedAssembly, plArgU(static_cast<plUInt32>(iLoadResult), 8, true, 16, true));
     return PL_FAILURE;
   }
 
