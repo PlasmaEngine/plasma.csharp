@@ -1,16 +1,16 @@
 #include <EditorPluginCSharp/EditorPluginCSharpPCH.h>
 
 #include <EditorFramework/Assets/AssetCurator.h>
-#include <EditorFramework/EditorApp/EditorApp.moc.h>
+#include <EditorFramework/EditorApp/EditorApp.h>
 #include <EditorFramework/GUI/ExposedParameters.h>
 #include <EditorPluginCSharp/CSharpProjectAsset/CSharpProjectAsset.h>
 #include <EditorPluginCSharp/CSharpProjectAsset/CSharpProjectAssetManager.h>
-#include <EditorPluginCSharp/CSharpProjectAsset/CSharpProjectAssetWindow.moc.h>
+#include <EditorPluginCSharp/CSharpProjectAsset/CSharpProjectAssetWindow.h>
 #include <Foundation/IO/FileSystem/DeferredFileWriter.h>
 #include <Foundation/IO/FileSystem/FileReader.h>
 #include <Foundation/IO/OSFile.h>
 #include <Foundation/Utilities/ConversionUtils.h>
-#include <GuiFoundation/UIServices/ImageCache.moc.h>
+#include <GuiFoundation/UIServices/UIServices.h>
 #include <ToolsFoundation/FileSystem/FileSystemModel.h>
 #include <ToolsFoundation/Project/ToolsProject.h>
 
@@ -278,11 +278,11 @@ namespace
 
     if (pDocument == nullptr && plOSFile::ExistsFile(projectAsset))
     {
-      pDocument = plQtEditorApp::GetSingleton()->OpenDocument(projectAsset, plDocumentFlags::None);
+      pDocument = plEditorApp::GetSingleton()->OpenDocument(projectAsset, plDocumentFlags::None);
     }
     else if (pDocument == nullptr)
     {
-      pDocument = plQtEditorApp::GetSingleton()->CreateDocument(projectAsset, plDocumentFlags::None);
+      pDocument = plEditorApp::GetSingleton()->CreateDocument(projectAsset, plDocumentFlags::None);
     }
 
     if (pDocument != nullptr)
@@ -332,7 +332,10 @@ namespace
     out_sSource.Clear();
     out_sSource.Append("using Plasma;\n\n");
     out_sSource.Append("namespace Game.Scripts;\n\n");
-    out_sSource.Append("[PlasmaScript]\n");
+    plStringBuilder persistentId;
+    plConversionUtils::ToString(plUuid::MakeUuid(), persistentId);
+    persistentId.ReplaceAll(" ", "");
+    out_sSource.Append("[PlasmaScript(Id = \"", persistentId, "\")]\n");
     out_sSource.Append("public sealed partial class ", sClassName, " : ComponentScript\n");
     out_sSource.Append("{\n");
     out_sSource.Append("    [Expose]\n");
@@ -434,7 +437,15 @@ plCSharpProjectAssetManager::plCSharpProjectAssetManager()
   m_DocTypeDesc.m_AssetDocumentFlags = plAssetDocumentFlags::AutoTransformOnSave;
   m_DocTypeDesc.m_bVisibleInAssetBrowser = false;
 
-  plQtImageCache::GetSingleton()->RegisterTypeImage("C# Script Project", QPixmap(":/AssetIcons/CSharp.svg"));
+  m_ClassTypeDesc.m_sDocumentTypeName = "C# Script Class";
+  m_ClassTypeDesc.m_sFileExtension = "plCSharpScriptClass";
+  m_ClassTypeDesc.m_sIcon = ":/AssetIcons/CSharp.svg";
+  m_ClassTypeDesc.m_sAssetCategory = "Scripting";
+  m_ClassTypeDesc.m_pDocumentType = plGetStaticRTTI<plCSharpProjectAssetDocument>();
+  m_ClassTypeDesc.m_pManager = this;
+  m_ClassTypeDesc.m_CompatibleTypes.PushBack("CompatibleAsset_ScriptClass");
+  m_ClassTypeDesc.m_sResourceFileExtension = "plBinCSharpProject";
+  m_ClassTypeDesc.m_bCanCreate = false;
 }
 
 plCSharpProjectAssetManager::~plCSharpProjectAssetManager()
@@ -491,7 +502,7 @@ void plCSharpProjectAssetManager::OnDocumentManagerEvent(const plDocumentManager
   if (event.m_Type == plDocumentManager::Event::Type::DocumentWindowRequested &&
       event.m_pDocument->GetDynamicRTTI() == plGetStaticRTTI<plCSharpProjectAssetDocument>())
   {
-    new plQtCSharpProjectAssetDocumentWindow(static_cast<plCSharpProjectAssetDocument*>(event.m_pDocument)); // NOLINT
+    new plCSharpProjectAssetDocumentWindow(static_cast<plCSharpProjectAssetDocument*>(event.m_pDocument)); // NOLINT
   }
 }
 
@@ -508,6 +519,7 @@ void plCSharpProjectAssetManager::InternalGetSupportedDocumentTypes(
   plDynamicArray<const plDocumentTypeDescriptor*>& inout_DocumentTypes) const
 {
   inout_DocumentTypes.PushBack(&m_DocTypeDesc);
+  inout_DocumentTypes.PushBack(&m_ClassTypeDesc);
 }
 
 plCSharpScriptAssetManager::plCSharpScriptAssetManager()
@@ -522,8 +534,6 @@ plCSharpScriptAssetManager::plCSharpScriptAssetManager()
   m_DocTypeDesc.m_CompatibleTypes.PushBack("CompatibleAsset_ScriptClass");
   m_DocTypeDesc.m_sResourceFileExtension = "plBinCSharpProject";
   m_DocTypeDesc.m_AssetDocumentFlags = plAssetDocumentFlags::DisableTransform;
-
-  plQtImageCache::GetSingleton()->RegisterTypeImage("C# Script", QPixmap(":/AssetIcons/CSharp.svg"));
 }
 
 plStatus plCSharpScriptAssetManager::ReadAssetDocumentInfo(plUniquePtr<plAssetDocumentInfo>& out_pInfo,
@@ -619,9 +629,9 @@ plResult plCSharpScriptAssetManager::OpenDocumentExternally(plStringView sFilePa
       "Could not open the hidden C# project for script '{}'. Opening the source file directly instead.",
       sFilePath);
     plStringBuilder scriptFile(sFilePath);
-    if (!plQtUiServices::OpenFileInDefaultProgram(scriptFile))
+    if (!plEditorUiServices::OpenFileInDefaultProgram(scriptFile.GetData()))
     {
-      plQtUiServices::ShowGlobalStatusBarMessage(
+      plEditorUiServices::ShowGlobalStatusBarMessage(
         plFmt("Could not open C# script '{}'. See the log for details.", sFilePath));
     }
 
@@ -634,7 +644,7 @@ plResult plCSharpScriptAssetManager::OpenDocumentExternally(plStringView sFilePa
   if (openStatus.Failed())
   {
     plLog::Error("Could not open C# script '{}': {}", sFilePath, openStatus.m_sMessage);
-    plQtUiServices::ShowGlobalStatusBarMessage(
+    plEditorUiServices::ShowGlobalStatusBarMessage(
       plFmt("Could not open C# script '{}': {}", sFilePath, openStatus.m_sMessage));
   }
 

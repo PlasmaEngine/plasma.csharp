@@ -2,9 +2,12 @@
 
 #include <Core/Scripting/Bindings/ScriptBindingManifest.h>
 #include <Core/Scripting/Bindings/ScriptBindingRegistry.h>
+#include <Core/Scripting/ScriptApiDocs.h>
 #include <EditorFramework/Assets/AssetCurator.h>
-#include <EditorFramework/EditorApp/EditorApp.moc.h>
+#include <EditorFramework/Assets/AssetProcessor.h>
+#include <EditorFramework/EditorApp/EditorApp.h>
 #include <EditorFramework/GUI/ExposedParameters.h>
+#include <EditorFramework/Scripting/ScriptFieldMapper.h>
 #include <EditorPluginCSharp/CSharpEditorPaths.h>
 #include <EditorPluginCSharp/CSharpProjectAsset/CSharpProjectAsset.h>
 #include <EditorPluginCSharp/CSharpProjectAsset/CSharpSourceDependencyTracker.h>
@@ -24,14 +27,27 @@
 #include <Foundation/Types/ScopeExit.h>
 #include <Foundation/Utilities/Progress.h>
 #include <Foundation/Utilities/ConversionUtils.h>
-#include <GuiFoundation/UIServices/UIServices.moc.h>
+#include <GuiFoundation/EngineUi/EnginePrompt.h>
+#include <GuiFoundation/UIServices/UIServices.h>
+#include <GuiFoundation/UIServices/DynamicEnums.h>
+#include <GuiFoundation/UIServices/DynamicBitflags.h>
 #include <ToolsFoundation/FileSystem/FileSystemModel.h>
 #include <ToolsFoundation/Object/ObjectCommandAccessor.h>
 #include <ToolsFoundation/Project/ToolsProject.h>
 
-#include <QInputDialog>
-
 #include <charconv>
+#include <regex>
+
+namespace
+{
+  /// The engine API's descriptions beside the binding manifest, handed to the generator when they exist. The manifest
+  /// property is passed unquoted: MSBuild cannot parse quotes nested inside a condition's quotes.
+  constexpr const char* s_szScriptDocsItem = "    <AdditionalFiles Include=\"$([System.IO.Path]::GetDirectoryName($(PlasmaBindingManifest)))/PlasmaScriptDocs.json\" "
+                                             "Condition=\"Exists('$([System.IO.Path]::GetDirectoryName($(PlasmaBindingManifest)))/PlasmaScriptDocs.json')\" />\n";
+
+  constexpr const char* s_szBrokenScriptDocsItem = "    <AdditionalFiles Include=\"$([System.IO.Path]::GetDirectoryName('$(PlasmaBindingManifest)'))/PlasmaScriptDocs.json\" "
+                                                   "Condition=\"Exists('$([System.IO.Path]::GetDirectoryName('$(PlasmaBindingManifest)'))/PlasmaScriptDocs.json')\" />\n";
+} // namespace
 
 // clang-format off
 PL_BEGIN_DYNAMIC_REFLECTED_TYPE(plCSharpProjectAssetMetaData, 3, plRTTIDefaultAllocator<plCSharpProjectAssetMetaData>)
@@ -69,6 +85,8 @@ PL_BEGIN_DYNAMIC_REFLECTED_TYPE(plCSharpProjectAssetProperties, 3, plRTTIDefault
     PL_MEMBER_PROPERTY("LastGoodProjectFileHash", m_uiLastGoodProjectFileHash)->AddAttributes(new plHiddenAttribute()),
     PL_MEMBER_PROPERTY("LastGoodEntryAssemblyHash", m_uiLastGoodEntryAssemblyHash)->AddAttributes(new plHiddenAttribute()),
     PL_MEMBER_PROPERTY("BuildDiagnostics", m_sBuildDiagnostics)->AddAttributes(new plHiddenAttribute()),
+    PL_MEMBER_PROPERTY("UsePersistentCompiler", m_bUsePersistentCompiler)->AddAttributes(new plDefaultValueAttribute(true)),
+    PL_MEMBER_PROPERTY("BuildRequest", m_uiBuildRequest)->AddAttributes(new plHiddenAttribute()),
   }
   PL_END_PROPERTIES;
 }
@@ -341,6 +359,21 @@ namespace
         bChanged = true;
     }
 
+    // Projects generated before the bindings had doc comments do not hand the generator the API descriptions.
+    if (contents.FindSubString("PlasmaScriptDocs.json") == nullptr && contents.FindSubString("    <AdditionalFiles Include=\"$(PlasmaBindingManifest)\" />\n") != nullptr)
+    {
+      plStringBuilder sWithDocs("    <AdditionalFiles Include=\"$(PlasmaBindingManifest)\" />\n", s_szScriptDocsItem);
+      contents.ReplaceAll("    <AdditionalFiles Include=\"$(PlasmaBindingManifest)\" />\n", sWithDocs);
+      bChanged = true;
+    }
+
+    // An earlier form of that line quoted the manifest inside the condition, which MSBuild cannot parse.
+    if (contents.FindSubString(s_szBrokenScriptDocsItem) != nullptr)
+    {
+      contents.ReplaceAll(s_szBrokenScriptDocsItem, s_szScriptDocsItem);
+      bChanged = true;
+    }
+
     if (contents.FindSubString("Plasma.Engine.Generator.csproj") == nullptr && !bChanged)
       return plStatus(PL_SUCCESS);
     if (contents.FindSubString("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>") != nullptr)
@@ -417,7 +450,7 @@ namespace
     return plStatus(PL_SUCCESS);
   }
 
-  plStatus OpenCSharpIDE(plStringView sProjectFile, plStringView sScriptFile = {})
+  plStatus OpenCSharpIDE(plStringView sProjectFile, plStringView sScriptFile = {}, plUInt32 uiLine = 0, plUInt32 uiColumn = 0)
   {
     PL_SUCCEED_OR_RETURN(UpdateGeneratedProjectItemMode(sProjectFile));
 
@@ -428,20 +461,34 @@ namespace
     {
       case plCSharpIDE::VisualStudio:
       {
-        QStringList arguments;
-        arguments.append(plMakeQString(sProjectFile));
+        plHybridArray<plString, 4> arguments;
+        arguments.PushBack(sProjectFile);
         if (!sScriptFile.IsEmpty())
-          arguments.append(plMakeQString(sScriptFile));
-        return plQtUiServices::OpenInVisualStudio(arguments);
+          arguments.PushBack(sScriptFile);
+        if (uiLine != 0)
+        {
+          plStringBuilder sGoTo;
+          sGoTo.SetFormat("Edit.GoTo {}", uiLine);
+          arguments.PushBack("/Command");
+          arguments.PushBack(sGoTo);
+        }
+        return plEditorUiServices::OpenInVisualStudio(arguments);
       }
 
       case plCSharpIDE::Rider:
       {
-        QStringList arguments;
-        arguments.append(plMakeQString(sProjectFile));
+        plHybridArray<plString, 4> arguments;
+        arguments.PushBack(sProjectFile);
+        if (uiLine != 0)
+        {
+          plStringBuilder sLine;
+          sLine.SetFormat("{}", uiLine);
+          arguments.PushBack("--line");
+          arguments.PushBack(sLine);
+        }
         if (!sScriptFile.IsEmpty())
-          arguments.append(plMakeQString(sScriptFile));
-        return plQtUiServices::OpenInRider(arguments);
+          arguments.PushBack(sScriptFile);
+        return plEditorUiServices::OpenInRider(arguments);
       }
 
       case plCSharpIDE::VisualStudioCode:
@@ -449,14 +496,17 @@ namespace
         plStringBuilder workspaceFile;
         PL_SUCCEED_OR_RETURN(WriteVsCodeWorkspace(sProjectFile, workspaceFile));
 
-        QStringList arguments;
-        arguments.append(plMakeQString(workspaceFile));
+        plHybridArray<plString, 3> arguments;
+        arguments.PushBack(workspaceFile);
         if (!sScriptFile.IsEmpty())
         {
-          arguments.append("-g");
-          arguments.append(plMakeQString(sScriptFile));
+          arguments.PushBack("-g");
+          plStringBuilder sLocation(sScriptFile);
+          if (uiLine != 0)
+            sLocation.AppendFormat(":{}:{}", uiLine, plMath::Max(uiColumn, 1U));
+          arguments.PushBack(sLocation);
         }
-        return plQtUiServices::OpenInVsCode(arguments);
+        return plEditorUiServices::OpenInVsCode(arguments);
       }
     }
 
@@ -578,7 +628,9 @@ namespace
       trimmedLine.Trim(" \t");
       if (trimmedLine.StartsWith_NoCase("Time Elapsed ") ||
           trimmedLine.StartsWith_NoCase("Restored ") ||
-          trimmedLine.StartsWith_NoCase("Restore completed "))
+          trimmedLine.StartsWith_NoCase("Restore completed ") ||
+          trimmedLine.StartsWith("Compiler stages:") ||
+          trimmedLine.StartsWith("C# compiler:"))
       {
         continue;
       }
@@ -876,6 +928,71 @@ namespace
 
     return true;
   }
+
+  /// The C# keywords, and the contextual keywords that current C# versions reject as a type name ('record' only warns).
+  bool IsCSharpKeyword(plStringView sName)
+  {
+    static const char* s_Keywords[] = {
+      "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const", "continue",
+      "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit", "extern", "false", "finally",
+      "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock",
+      "long", "namespace", "new", "null", "object", "operator", "out", "override", "params", "private", "protected",
+      "public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static", "string",
+      "struct", "switch", "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort",
+      "using", "virtual", "void", "volatile", "while",
+      "extension", "file", "record", "required", "scoped"};
+
+    for (const char* szKeyword : s_Keywords)
+    {
+      if (sName == szKeyword)
+        return true;
+    }
+
+    return false;
+  }
+
+  /// A new script's file: the class name with ".cs", directly in the source root.
+  void MakeScriptFilePath(plStringView sSourceRoot, plStringView sClassName, plStringBuilder& out_sScriptFile)
+  {
+    out_sScriptFile.Set(sSourceRoot, "/", sClassName, ".cs");
+    out_sScriptFile.MakeCleanPath();
+  }
+
+  /// The source file, relative to the source root, that a new script of this class would clash with; empty when there
+  /// is none. Any folder counts: the script template declares a partial class, so two files of one name would merge.
+  plString FindScriptFileClash(plStringView sSourceRoot, const plDynamicArray<plString>& existingSources, plStringView sClassName)
+  {
+    plStringBuilder sScriptFile;
+    MakeScriptFilePath(sSourceRoot, sClassName, sScriptFile);
+    if (plOSFile::ExistsFile(sScriptFile))
+      return sScriptFile.GetFileNameAndExtension();
+
+    for (const plString& sSource : existingSources)
+    {
+      if (sSource.GetFileNameAndExtension().IsEqual_NoCase(sScriptFile.GetFileNameAndExtension()))
+        return sSource;
+    }
+
+    return {};
+  }
+
+  /// The message the "New C# Script" prompt shows under its field; empty when the name can become a new script.
+  plString CheckNewScriptName(plStringView sSourceRoot, const plDynamicArray<plString>& existingSources, plStringView sName)
+  {
+    plStringBuilder sClassName = sName;
+    sClassName.Trim();
+    if (!IsValidCSharpIdentifier(sClassName) || IsCSharpKeyword(sClassName))
+      return "The C# script name must be a valid identifier.";
+
+    const plString sClash = FindScriptFileClash(sSourceRoot, existingSources, sClassName);
+    if (sClash.IsEmpty())
+      return {};
+
+    // the path relative to the source root: the full path does not fit the line under the field
+    plStringBuilder sMessage;
+    sMessage.SetFormat("C# source file '{}' already exists.", sClash);
+    return sMessage;
+  }
 } // namespace
 
 plCSharpProjectAssetDocument::plCSharpProjectAssetDocument(plStringView sDocumentPath)
@@ -1070,6 +1187,27 @@ plStatus plCSharpProjectAssetDocument::ExportBindingManifest(plStringView sBindi
 
   plAssetCurator::GetSingleton()->NotifyOfFileChange(sBindingManifest);
 
+  // The API descriptions travel beside the manifest; the generator turns them into the bindings' doc comments. Missing
+  // docs only mean bindings without comments.
+  {
+    plStringBuilder sDocs = directory;
+    sDocs.AppendPath("PlasmaScriptDocs.json");
+
+    plFileReader source;
+    if (source.Open(plScriptApiDocs::GetDefaultFile()).Succeeded())
+    {
+      plDeferredFileWriter docsWriter;
+      docsWriter.SetOutput(sDocs, true);
+
+      plUInt8 buffer[4096];
+      while (const plUInt64 uiRead = source.ReadBytes(buffer, sizeof(buffer)))
+        docsWriter.WriteBytes(buffer, uiRead).IgnoreResult();
+
+      if (docsWriter.Close().Failed())
+        plLog::Warning("Could not write the C# API docs to '{}'.", sDocs);
+    }
+  }
+
   const plStatus stampStatus = UpdateBindingSchemaStamp();
   if (stampStatus.Failed())
     return stampStatus;
@@ -1079,7 +1217,7 @@ plStatus plCSharpProjectAssetDocument::ExportBindingManifest(plStringView sBindi
 
 plStatus plCSharpProjectAssetDocument::RunProjectBuild(
   plStringView sProjectFile, plStringView sBindingManifest,
-  plStringView sOutputDirectory, plStringBuilder& out_sDiagnostics) const
+  plStringView sOutputDirectory, plStringBuilder& out_sDiagnostics, bool bUseCli) const
 {
   // Every build funnels through here, whichever way it was started. The project file is generated
   // once and then kept, so one written before this plugin became a package still references the
@@ -1093,14 +1231,34 @@ plStatus plCSharpProjectAssetDocument::RunProjectBuild(
 
   plProcessOptions options;
   options.m_sProcess = "dotnet";
-  options.AddArgument("build");
-  options.AddArgument(sProjectFile);
-  options.AddArgument("--nologo");
+  const plStringView configuration = GetProperties()->m_sBuildConfiguration.IsEmpty() ? plStringView("Development") : GetProperties()->m_sBuildConfiguration.GetView();
+  plStringBuilder compiler = plCSharpEditorPaths::FindPayloadRoot();
+  compiler.AppendPath("CSharp/Tools/Plasma.ScriptCompiler.dll");
+  const bool bPersistentCompiler = !bUseCli && GetProperties()->m_bUsePersistentCompiler && configuration.IsEqual_NoCase("Development") && plOSFile::ExistsFile(compiler);
+  if (bPersistentCompiler)
+  {
+    options.AddArgument(compiler);
+    options.AddArgument("--project");
+    options.AddArgument(sProjectFile);
+    options.AddArgument("--manifest");
+    options.AddArgument(sBindingManifest);
+  }
+  else
+  {
+    options.AddArgument("build");
+    options.AddArgument(sProjectFile);
+    options.AddArgument("--nologo");
+    plStringBuilder bindingManifestArgument("-property:PlasmaBindingManifest=", sBindingManifest);
+    options.AddArgument(bindingManifestArgument);
+    if (configuration.IsEqual_NoCase("Development"))
+    {
+      options.AddArgument("-property:Optimize=false");
+      options.AddArgument("-property:DebugSymbols=true");
+      options.AddArgument("-property:DebugType=portable");
+    }
+  }
   options.AddArgument("--configuration");
-  options.AddArgument(GetProperties()->m_sBuildConfiguration.IsEmpty() ? plStringView("Development") : GetProperties()->m_sBuildConfiguration.GetView());
-  plStringBuilder bindingManifestArgument(
-    "-property:PlasmaBindingManifest=", sBindingManifest);
-  options.AddArgument(bindingManifestArgument);
+  options.AddArgument(configuration);
   options.AddArgument("--output");
   options.AddArgument(sOutputDirectory);
   options.m_sWorkingDirectory = plPathUtils::GetFileDirectory(sProjectFile);
@@ -1121,6 +1279,11 @@ plStatus plCSharpProjectAssetDocument::RunProjectBuild(
   plInt32 iReturnCode = -1;
   if (plProcess::Execute(options, &iReturnCode).Failed())
     return plStatus("Failed to start 'dotnet build'. Install the pinned .NET 10 SDK and ensure dotnet is on PATH.");
+  if (bPersistentCompiler && iReturnCode == 2)
+  {
+    out_sDiagnostics.Append("\nPersistent compilation is unavailable for these project inputs. Using the standard build.\n");
+    return RunProjectBuild(sProjectFile, sBindingManifest, sOutputDirectory, out_sDiagnostics, true);
+  }
   if (iReturnCode != 0)
     return plStatus(plFmt("'dotnet build' failed with exit code {}.", iReturnCode));
 
@@ -1135,6 +1298,22 @@ plStatus plCSharpProjectAssetDocument::FindEntryAssembly(plStringView sProjectFi
   if (!sCachedTargetFileName.IsEmpty())
   {
     out_sEntryAssembly.Set(sOutputDirectory, "/", sCachedTargetFileName);
+    out_sEntryAssembly.MakeCleanPath();
+    if (plOSFile::ExistsFile(out_sEntryAssembly))
+      return plStatus(PL_SUCCESS);
+  }
+
+  // The persistent compiler already evaluated TargetFileName and returned a validated descriptor.
+  // Avoid another MSBuild process on first import or after a project configuration change.
+  plStringBuilder descriptorPath(sOutputDirectory, "/Plasma.ScriptDescriptors.json");
+  plStringBuilder descriptorJson;
+  plString descriptorEntry;
+  plDynamicArray<plCSharpClassDescriptor> descriptorClasses;
+  if (ReadTextFile(descriptorPath, descriptorJson).Succeeded() &&
+      plCSharpProjectDescriptors::Parse(descriptorJson, GetGuid(), descriptorEntry, descriptorClasses).Succeeded() &&
+      descriptorEntry == plPathUtils::GetFileNameAndExtension(descriptorEntry) && descriptorEntry.HasExtension("dll"))
+  {
+    out_sEntryAssembly.Set(sOutputDirectory, "/", descriptorEntry);
     out_sEntryAssembly.MakeCleanPath();
     if (plOSFile::ExistsFile(out_sEntryAssembly))
       return plStatus(PL_SUCCESS);
@@ -1200,47 +1379,8 @@ plStatus plCSharpProjectAssetDocument::RunInspector(
 
   if (!plOSFile::ExistsFile(inspector))
   {
-    plStringBuilder inspectorProject(plFileSystem::GetSdkRootDirectory());
-    inspectorProject.AppendPath("Code/EditorPlugins/CSharp/Managed/Plasma.ScriptInspector/Plasma.ScriptInspector.csproj");
-
-    plStringBuilder inspectorOutput(plFileSystem::GetSdkRootDirectory());
-    inspectorOutput.AppendPath("Intermediate/PlasmaBuild/CSharpInspector");
-    PL_SUCCEED_OR_RETURN(plOSFile::CreateDirectoryStructure(inspectorOutput));
-
-    plProcessOptions buildOptions;
-    buildOptions.m_sProcess = "dotnet";
-    buildOptions.AddArgument("build");
-    buildOptions.AddArgument(inspectorProject);
-    buildOptions.AddArgument("--nologo");
-    buildOptions.AddArgument("--configuration");
-    buildOptions.AddArgument("Release");
-    buildOptions.AddArgument("--output");
-    buildOptions.AddArgument(inspectorOutput);
-    buildOptions.m_sWorkingDirectory = plFileSystem::GetSdkRootDirectory();
-    buildOptions.m_bHideConsoleWindow = true;
-
-    plMutex buildOutputMutex;
-    buildOptions.m_onStdOut = [&](plStringView sText)
-    {
-      PL_LOCK(buildOutputMutex);
-      inout_sDiagnostics.Append(sText);
-    };
-    buildOptions.m_onStdError = [&](plStringView sText)
-    {
-      PL_LOCK(buildOutputMutex);
-      inout_sDiagnostics.Append(sText);
-    };
-
-    plInt32 iBuildReturnCode = -1;
-    if (plProcess::Execute(buildOptions, &iBuildReturnCode).Failed() || iBuildReturnCode != 0)
-      return plStatus("The managed C# descriptor inspector could not be built.");
-
-    inspector = inspectorOutput;
-    inspector.AppendPath("Plasma.ScriptInspector.dll");
+    return plStatus(plFmt("The packaged C# descriptor inspector is missing at '{}'. Repair or reinstall plasma.csharp.", inspector));
   }
-
-  if (!plOSFile::ExistsFile(inspector))
-    return plStatus(plFmt("The managed C# descriptor inspector is missing at '{}'.", inspector));
 
   plProcessOptions options;
   options.m_sProcess = "dotnet";
@@ -1436,15 +1576,17 @@ plStatus plCSharpProjectAssetDocument::CreateScriptFile(
   if (!IsValidCSharpIdentifier(sClassName))
     return plStatus(plFmt("'{}' is not a valid C# class name.", sClassName));
 
-  out_sScriptFile.Set(sSourceRoot, "/", sClassName, ".cs");
-  out_sScriptFile.MakeCleanPath();
+  MakeScriptFilePath(sSourceRoot, sClassName, out_sScriptFile);
   if (plOSFile::ExistsFile(out_sScriptFile))
     return plStatus(plFmt("C# source file '{}' already exists.", out_sScriptFile));
 
   plStringBuilder source;
   source.Append("using Plasma;\n\n");
   source.Append("namespace Game.Scripts;\n\n");
-  source.Append("[PlasmaScript]\n");
+  plStringBuilder persistentId;
+  plConversionUtils::ToString(plUuid::MakeUuid(), persistentId);
+  persistentId.ReplaceAll(" ", "");
+  source.Append("[PlasmaScript(Id = \"", persistentId, "\")]\n");
   source.Append("public sealed partial class ", sClassName, " : ComponentScript\n");
   source.Append("{\n");
   source.Append("    [Expose]\n");
@@ -1499,17 +1641,24 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
   projectXml.Append("<Project Sdk=\"Microsoft.NET.Sdk\">\n");
   projectXml.Append("  <PropertyGroup>\n");
   projectXml.Append("    <TargetFramework>net10.0</TargetFramework>\n");
-  projectXml.Append("    <Configurations>Development</Configurations>\n");
+  projectXml.Append("    <Configurations>Development;Shipping</Configurations>\n");
   projectXml.Append("    <Configuration>Development</Configuration>\n");
   projectXml.Append("    <ImplicitUsings>enable</ImplicitUsings>\n");
   projectXml.Append("    <Nullable>enable</Nullable>\n");
   projectXml.Append("    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>\n");
+  // Doc comments must be parsed for exposed fields' XML summaries to become editor tooltips.
+  projectXml.Append("    <GenerateDocumentationFile>true</GenerateDocumentationFile>\n");
+  projectXml.Append("    <NoWarn>$(NoWarn);CS1591</NoWarn>\n");
   projectXml.Append("    <EnableDefaultItems>false</EnableDefaultItems>\n");
+  projectXml.Append("    <PlasmaSeparateBindings>true</PlasmaSeparateBindings>\n");
   projectXml.Append("    <PlasmaBindingManifest Condition=\"'$(PlasmaBindingManifest)' == ''\">Intermediate/PlasmaBindings.json</PlasmaBindingManifest>\n");
   projectXml.Append("    <PlasmaSourceRoot>$(MSBuildProjectDirectory)</PlasmaSourceRoot>\n");
   projectXml.Append("    <AssemblyName>", projectName, "</AssemblyName>\n");
   projectXml.Append("    <RootNamespace>Game.Scripts</RootNamespace>\n");
   projectXml.Append("  </PropertyGroup>\n\n");
+  projectXml.Append("  <PropertyGroup Condition=\"'$(Configuration)' == 'Development'\">\n"
+                    "    <Optimize>false</Optimize>\n    <DebugSymbols>true</DebugSymbols>\n    <DebugType>portable</DebugType>\n  </PropertyGroup>\n"
+                    "  <PropertyGroup Condition=\"'$(Configuration)' == 'Shipping'\">\n    <Optimize>true</Optimize>\n  </PropertyGroup>\n\n");
   projectXml.Append("  <ItemGroup>\n");
   // Plugins/ holds installed packages, and a package built from source keeps its entire checkout in
   // Plugins/.source. Compiling that into the game assembly duplicates every type the package already
@@ -1518,6 +1667,8 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
                     "**/Intermediate/**/*.cs;**/obj/**/*.cs;**/Plugins/**/*.cs\" />\n");
   projectXml.Append("    <CompilerVisibleProperty Include=\"PlasmaSourceRoot\" />\n");
   projectXml.Append("    <AdditionalFiles Include=\"$(PlasmaBindingManifest)\" />\n");
+  // The engine API's descriptions, written beside the manifest; they become the bindings' doc comments.
+  projectXml.Append(s_szScriptDocsItem);
   // Private, so the script assembly does not re-export the engine API to anything referencing it.
   // The .xml beside the DLL gives IntelliSense the doc comments without any further wiring.
   projectXml.Append("    <Reference Include=\"Plasma.ScriptCore\">\n");
@@ -1531,6 +1682,9 @@ plStatus plCSharpProjectAssetDocument::CreateInitialProject()
   // The project is an implementation detail of the C# asset workflow. Keep it
   // deterministic and migrate older generated variants whenever it is opened.
   PL_SUCCEED_OR_RETURN(WriteTextFile(projectFile, projectXml));
+  plStringBuilder sdkPolicy(documentDirectory, "/global.json");
+  if (!plOSFile::ExistsFile(sdkPolicy))
+    PL_SUCCEED_OR_RETURN(WriteTextFile(sdkPolicy, "{\"sdk\":{\"version\":\"10.0.301\",\"rollForward\":\"latestFeature\",\"allowPrerelease\":false}}\n"));
 
   plDynamicArray<plString> existingSources;
   PL_SUCCEED_OR_RETURN(GatherSourceFiles(sourceRoot, existingSources));
@@ -1622,6 +1776,17 @@ void plCSharpProjectAssetDocument::UpdateDiagnostics(plStringView sDiagnostics)
     accessor.FinishTransaction();
 }
 
+void plCSharpProjectAssetDocument::ReportBuildDiagnostics(plStringView sDiagnostics) const
+{
+  // Tagged lines in the transform log reach the editor's script tools from any process, and replace the project's old set.
+  plHybridArray<plScriptDiagnostic, 16> diagnostics;
+  ParseBuildDiagnostics(sDiagnostics, diagnostics);
+
+  plStringBuilder sGuid;
+  plConversionUtils::ToString(GetGuid(), sGuid);
+  plScriptDiagnostics::LogAssetResult(sGuid, "C#", diagnostics);
+}
+
 void plCSharpProjectAssetDocument::LogBuildOutput(plStringView sDiagnostics, bool bBuildFailed) const
 {
   plHybridArray<plStringView, 64> lines;
@@ -1651,6 +1816,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   // quietly growing back is the regression worth catching, and it only shows up if it is measured.
   plTime stageStart = plTime::Now();
   plStringBuilder stageTimings;
+  PL_SCOPE_EXIT(plLog::Info("C# transform stages: {}", stageTimings));
   const auto stage = [&stageStart, &stageTimings](plStringView sName)
   {
     const plTime now = plTime::Now();
@@ -1686,7 +1852,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   if (status.Succeeded())
     status = ResolveBindingManifest(projectFile, bindingManifest);
 
-  plStringBuilder stagingDirectory(plFileSystem::GetSdkRootDirectory());
+  plStringBuilder stagingDirectory(plToolsProject::GetSingleton()->GetProjectDirectory());
   plStringBuilder guidText;
   plConversionUtils::ToString(GetGuid(), guidText);
   guidText.ReplaceAll(" ", "");
@@ -1761,7 +1927,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   }
   else
   {
-    if (status.Succeeded())
+    if (status.Succeeded() && !plOSFile::ExistsFile(descriptorFile))
       status = RunInspector(entryAssemblyPath, descriptorFile, diagnostics);
     if (status.Succeeded())
       status = ReadTextFile(descriptorFile, descriptorJson);
@@ -1815,6 +1981,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
       status.m_sMessage);
 
     LogBuildOutput(diagnostics, true);
+    ReportBuildDiagnostics(diagnostics);
 
     if (!transformFlags.IsSet(plTransformFlags::BackgroundProcessing))
       UpdateDiagnostics(diagnostics);
@@ -1835,6 +2002,7 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
   }
 
   LogBuildOutput(diagnostics, false);
+  ReportBuildDiagnostics(diagnostics);
 
   const plCSharpProjectAssetProperties* pProperties = GetProperties();
   const bool bDescriptorCacheChanged =
@@ -1897,7 +2065,6 @@ plTransformStatus plCSharpProjectAssetDocument::InternalTransformAsset(const cha
     RefreshCSharpSourceAssets();
 
   stage("write");
-  plLog::Dev("C# transform stages: {}", stageTimings);
 
   plLog::Success("Compiled C# scripts successfully. {} source asset(s) are up to date.", sourceFiles.GetCount());
 
@@ -1963,13 +2130,23 @@ void plCSharpProjectAssetDocument::UpdateAssetDocumentInfo(plAssetDocumentInfo* 
   // immediately after a successful build, so hash only the author-controlled transform settings.
   pInfo->m_uiSettingsHash = ComputeTransformSettingsHash();
 
+  // Serialized dependency headers travel with copied projects and templates. Keep project-local
+  // paths relative to the data directory instead of pinning the original checkout location.
+  const auto AddDependency = [pInfo](plStringBuilder path)
+  {
+    plStringBuilder relativePath = path;
+    if (plEditorApp::GetSingleton()->MakePathDataDirectoryRelative(relativePath))
+      path = relativePath;
+    pInfo->m_TransformDependencies.Insert(path);
+  };
+
   plStringBuilder bindingSchemaStamp;
   if (GetBindingSchemaStampPath(bindingSchemaStamp).Succeeded())
-    pInfo->m_TransformDependencies.Insert(bindingSchemaStamp);
+    AddDependency(bindingSchemaStamp);
 
   plStringBuilder sourceDependencyStamp;
   if (GetSourceDependencyStampPath(sourceDependencyStamp).Succeeded())
-    pInfo->m_TransformDependencies.Insert(sourceDependencyStamp);
+    AddDependency(sourceDependencyStamp);
 
   if (plToolsProject::IsProjectOpen())
   {
@@ -1989,14 +2166,14 @@ void plCSharpProjectAssetDocument::UpdateAssetDocumentInfo(plAssetDocumentInfo* 
       sPath.MakeCleanPath();
 
       if (plOSFile::ExistsFile(sPath))
-        pInfo->m_TransformDependencies.Insert(sPath);
+        AddDependency(sPath);
     }
   }
 
   plStringBuilder projectFile;
   if (ResolveProjectFile(projectFile).Succeeded())
   {
-    pInfo->m_TransformDependencies.Insert(projectFile);
+    AddDependency(projectFile);
 
     // The per-project binding manifest is generated by the transform itself. The shared schema
     // and source stamps above invalidate every C# project after reflected API or source changes.
@@ -2030,7 +2207,12 @@ plExposedParameters* plCSharpProjectAssetDocument::CreateExposedParameters(
 
   for (const plCSharpFieldDescriptor& field : classDescriptor.m_Fields)
   {
-    const plRTTI* pType = GetExposedParameterType(field.m_sManagedType, field.m_DefaultValue.m_sKind);
+    plScriptFieldDesc desc;
+    desc.m_sName = field.m_sName;
+
+    // A GameObject field is picked in the scene; the script component resolves it to a handle.
+    const bool bObjectField = field.m_sManagedType == "Plasma.GameObject";
+    const plRTTI* pType = bObjectField ? plGetStaticRTTI<plString>() : GetExposedParameterType(field.m_sManagedType, field.m_DefaultValue.m_sKind);
     if (pType == nullptr)
     {
       plLog::Warning("C# exposed field '{}.{}' uses managed reference type '{}', which is retained in the project "
@@ -2039,27 +2221,94 @@ plExposedParameters* plCSharpProjectAssetDocument::CreateExposedParameters(
       continue;
     }
 
-    plExposedParameter* pParameter = PL_DEFAULT_NEW(plExposedParameter);
-    pParameter->m_sName = field.m_sName;
-    pParameter->m_DefaultValue = MakeDefaultValue(field);
-    pParameter->m_Category = plPropertyCategory::Member;
-    pParameter->m_sType = pType->GetTypeName();
+    desc.m_sType = pType->GetTypeName();
+    desc.m_DefaultValue = bObjectField ? plVariant(plString()) : MakeDefaultValue(field);
+    desc.m_bObjectReference = bObjectField;
 
     const plString* pMinimum = nullptr;
     const plString* pMaximum = nullptr;
-    if (pParameter->m_DefaultValue.IsValid() &&
+    if (desc.m_DefaultValue.IsValid() &&
         field.m_Metadata.TryGetValue("Range.Minimum", pMinimum) &&
         field.m_Metadata.TryGetValue("Range.Maximum", pMaximum))
     {
-      const plVariant minimum = ConvertNumericMetadata(*pMinimum, pParameter->m_DefaultValue);
-      const plVariant maximum = ConvertNumericMetadata(*pMaximum, pParameter->m_DefaultValue);
-      if (minimum.IsValid() && maximum.IsValid())
-        pParameter->m_Attributes.PushBack(PL_DEFAULT_NEW(plClampValueAttribute, minimum, maximum));
+      desc.m_Minimum = ConvertNumericMetadata(*pMinimum, desc.m_DefaultValue);
+      desc.m_Maximum = ConvertNumericMetadata(*pMaximum, desc.m_DefaultValue);
     }
 
-    const plString* pCategory = nullptr;
-    if (field.m_Metadata.TryGetValue("Category", pCategory) && !pCategory->IsEmpty())
-      pParameter->m_Attributes.PushBack(PL_DEFAULT_NEW(plGroupAttribute, pCategory->GetData()));
+    const plString* pText = nullptr;
+    if (field.m_Metadata.TryGetValue("Category", pText))
+      desc.m_sGroup = *pText;
+    if (field.m_Metadata.TryGetValue("DisplayName", pText))
+      desc.m_sDisplayName = *pText;
+    if (field.m_Metadata.TryGetValue("Tooltip", pText))
+      desc.m_sTooltip = *pText;
+    if (field.m_Metadata.TryGetValue("Asset", pText) && pType == plGetStaticRTTI<plString>())
+      desc.m_sAssetFilter = *pText;
+
+    plExposedParameter* pParameter = plScriptFieldMapper::CreateParameter(desc);
+
+    const plString* pFlags = nullptr;
+    if (field.m_Metadata.TryGetValue("Enum.Flags", pFlags))
+    {
+      plStringBuilder enumName;
+      plConversionUtils::ToString(assetGuid, enumName);
+      enumName.Prepend("CSharp.");
+      enumName.Append(".", field.m_sManagedType);
+      if (*pFlags == "true")
+      {
+        plDynamicBitflags& flags = plDynamicBitflags::GetDynamicBitflags(enumName);
+        flags.Clear();
+        bool bSupported = true;
+        for (const auto& metadata : field.m_Metadata)
+        {
+          if (!metadata.Key().StartsWith("Enum.Value."))
+            continue;
+          plUInt64 uiValue = 0;
+          if (ParseUnsigned(metadata.Value(), uiValue).Failed())
+          {
+            bSupported = false;
+            break;
+          }
+          // Composite aliases and zero are represented by the combination of individual flags.
+          if (uiValue == 0 || (uiValue & (uiValue - 1)) != 0)
+            continue;
+          plUInt32 uiBit = 0;
+          while ((uiValue >> uiBit) != 1)
+            ++uiBit;
+          plStringView name = metadata.Key().GetView();
+          name.Shrink(11, 0);
+          flags.SetValueAndName(uiBit, name);
+        }
+        if (bSupported)
+          pParameter->m_Attributes.PushBack(PL_DEFAULT_NEW(plDynamicBitflagsAttribute, enumName));
+        else
+          plLog::Warning("C# flags '{}.{}' contain negative values; using a numeric inspector control.", classDescriptor.m_sManagedName, field.m_sName);
+      }
+      else
+      {
+        plDynamicEnum& values = plDynamicEnum::GetDynamicEnum(enumName.GetData());
+        values.Clear();
+        bool bSupported = true;
+        for (const auto& metadata : field.m_Metadata)
+        {
+          if (!metadata.Key().StartsWith("Enum.Value."))
+            continue;
+          plInt64 iValue = 0;
+          if (ParseSigned(metadata.Value(), iValue).Failed() || iValue < -2147483648LL || iValue > 2147483647LL)
+          {
+            bSupported = false;
+            break;
+          }
+          plStringView name = metadata.Key().GetView();
+          name.Shrink(11, 0);
+          values.SetValueAndName(static_cast<plInt32>(iValue), name);
+        }
+        if (bSupported)
+          pParameter->m_Attributes.PushBack(PL_DEFAULT_NEW(plDynamicEnumAttribute, enumName.GetData()));
+        else
+          plLog::Warning("C# enum '{}.{}' exceeds the named control's 32-bit range; using a numeric inspector control.", classDescriptor.m_sManagedName, field.m_sName);
+      }
+    }
 
     pExposedParameters->m_Parameters.PushBack(pParameter);
   }
@@ -2073,7 +2322,7 @@ plUInt64 plCSharpProjectAssetDocument::ComputeTransformSettingsHash() const
   plUInt64 uiHash = plHashingUtils::xxHash64(&documentGuid, sizeof(documentGuid));
   // Bump this whenever generated binding call sites or ScriptCore behavior
   // changes in a way that requires existing project assemblies to be rebuilt.
-  constexpr plUInt32 uiSettingsVersion = 3;
+  constexpr plUInt32 uiSettingsVersion = 4;
   uiHash = plHashingUtils::xxHash64(&uiSettingsVersion, sizeof(uiSettingsVersion), uiHash);
 
   const auto hashString = [&uiHash](plStringView value)
@@ -2088,18 +2337,41 @@ plUInt64 plCSharpProjectAssetDocument::ComputeTransformSettingsHash() const
   hashString(pProperties->m_sSourceRoot);
   hashString(pProperties->m_sBuildConfiguration);
   hashString(pProperties->m_sBindingManifest);
+  uiHash = plHashingUtils::xxHash64(&pProperties->m_bUsePersistentCompiler, sizeof(pProperties->m_bUsePersistentCompiler), uiHash);
+  uiHash = plHashingUtils::xxHash64(&pProperties->m_uiBuildRequest, sizeof(pProperties->m_uiBuildRequest), uiHash);
   return uiHash;
+}
+
+plStatus plCSharpProjectAssetDocument::QueueBuildProject()
+{
+  PL_SUCCEED_OR_RETURN(UpdateSourceDependencyStamp());
+  plObjectCommandAccessor accessor(GetCommandHistory());
+  accessor.StartTransaction("Queue C# Build");
+  const plStatus status = accessor.SetValueByName(GetPropertyObject(), "BuildRequest", GetProperties()->m_uiBuildRequest + 1);
+  if (status.Failed())
+  {
+    accessor.CancelTransaction();
+    return status;
+  }
+  accessor.FinishTransaction();
+  // Manual and automatic builds use the same processor scheduler. Saving publishes the new request
+  // revision; subsequent clicks supersede it rather than blocking the UI in TransformAsset.
+  plAssetProcessor::GetSingleton()->StartProcessor();
+  PL_SUCCEED_OR_RETURN(SaveDocument());
+  plAssetCurator::GetSingleton()->NotifyOfAssetChange(GetGuid());
+  plEditorUiServices::ShowGlobalStatusBarMessage("C# build queued. Previous successful code remains available.");
+  return plStatus(PL_SUCCESS);
 }
 
 plTransformStatus plCSharpProjectAssetDocument::BuildProject()
 {
-  plQtUiServices::ShowGlobalStatusBarMessage("Compiling C# scripts...");
+  plEditorUiServices::ShowGlobalStatusBarMessage("Compiling C# scripts...");
 
   const plStatus status = UpdateSourceDependencyStamp();
   if (status.Failed())
   {
-    plQtUiServices::ShowGlobalStatusBarMessage(
-      "C# compilation could not start. See the log for details.", plQtUiServices::Event::TextType::Error);
+    plEditorUiServices::ShowGlobalStatusBarMessage(
+      "C# compilation could not start. See the log for details.", plEditorUiServices::Event::TextType::Error);
     return plTransformStatus(status);
   }
 
@@ -2107,14 +2379,14 @@ plTransformStatus plCSharpProjectAssetDocument::BuildProject()
   if (result.Succeeded())
   {
     RefreshCSharpSourceAssets();
-    plQtUiServices::ShowGlobalStatusBarMessage(
+    plEditorUiServices::ShowGlobalStatusBarMessage(
       plFmt("C# compilation succeeded. {} script file(s) are up to date.", GetProperties()->m_LastGoodSources.GetCount()),
-      plQtUiServices::Event::TextType::Success);
+      plEditorUiServices::Event::TextType::Success);
   }
   else
   {
-    plQtUiServices::ShowGlobalStatusBarMessage(
-      "C# compilation failed. See the log for compiler diagnostics.", plQtUiServices::Event::TextType::Error);
+    plEditorUiServices::ShowGlobalStatusBarMessage(
+      "C# compilation failed. See the log for compiler diagnostics.", plEditorUiServices::Event::TextType::Error);
   }
 
   return result;
@@ -2134,7 +2406,7 @@ void plCSharpProjectAssetDocument::OpenProject()
   if (openStatus.Failed())
   {
     plLog::Warning("Could not open C# project '{}' in the selected IDE: {}", projectFile, openStatus.m_sMessage);
-    if (!plQtUiServices::OpenFileInDefaultProgram(projectFile))
+    if (!plEditorUiServices::OpenFileInDefaultProgram(projectFile.GetData()))
       ShowDocumentStatus(plFmt("Could not open the C# project: {}", openStatus.m_sMessage));
   }
 }
@@ -2161,20 +2433,130 @@ void plCSharpProjectAssetDocument::OpenScript()
   plString selectedSource = sourceFiles[0];
   if (sourceFiles.GetCount() > 1)
   {
-    QStringList choices;
-    for (const plString& sourceFile : sourceFiles)
-      choices.push_back(plMakeQString(sourceFile));
-
     bool bAccepted = false;
-    const QString selected =
-      QInputDialog::getItem(nullptr, "Open C# Script", "Source file:", choices, 0, false, &bAccepted);
+    const plString selected = plEnginePrompt::GetItem("Open C# Script", "Source file:", sourceFiles, 0, false, &bAccepted);
     if (!bAccepted)
       return;
-    selectedSource = selected.toUtf8().data();
+    selectedSource = selected;
   }
 
   plStringBuilder scriptFile(sourceRoot, "/", selectedSource);
   OpenScript(scriptFile);
+}
+
+void plCSharpProjectAssetDocument::ParseBuildDiagnostics(plStringView sDiagnostics, plDynamicArray<plScriptDiagnostic>& out_diagnostics)
+{
+  // "File(line,col[,endline,endcol]): error|warning CODE: message [project]"
+  static const std::regex diagnosticPattern(
+    R"(^\s*(.+?)\((\d+),(\d+)(?:,(\d+),(\d+))?\):\s*(error|warning)\s+(\w+):\s*(.*?)(?:\s+\[.*\])?$)", std::regex::ECMAScript);
+
+  plSet<plString> seen;
+  plHybridArray<plStringView, 64> lines;
+  sDiagnostics.Split(false, lines, "\r", "\n");
+
+  for (plStringView line : lines)
+  {
+    line.Trim(" \t");
+
+    const std::string text(line.GetStartPointer(), line.GetElementCount());
+    std::smatch match;
+    if (!std::regex_match(text, match, diagnosticPattern))
+      continue;
+
+    plStringBuilder identity;
+    identity.SetFormat("{}:{}:{}:{}", match[1].str().c_str(), match[2].str().c_str(), match[3].str().c_str(), match[7].str().c_str());
+    if (seen.Contains(identity))
+      continue;
+    seen.Insert(identity);
+
+    plScriptDiagnostic& diag = out_diagnostics.ExpandAndGetRef();
+    diag.m_sLanguage = "C#";
+    diag.m_Severity = match[6].str() == "error" ? plScriptDiagnosticSeverity::Error : plScriptDiagnosticSeverity::Warning;
+    diag.m_Origin = plStringView(match[7].str().c_str()).StartsWith("PL") ? plScriptDiagnosticOrigin::Binding : plScriptDiagnosticOrigin::Compile;
+    diag.m_sCode = match[7].str().c_str();
+    diag.m_sMessage = match[8].str().c_str();
+    diag.m_sFile = match[1].str().c_str();
+    plConversionUtils::StringToUInt(match[2].str().c_str(), diag.m_uiLine).IgnoreResult();
+    plConversionUtils::StringToUInt(match[3].str().c_str(), diag.m_uiColumn).IgnoreResult();
+    if (match[4].matched)
+      plConversionUtils::StringToUInt(match[4].str().c_str(), diag.m_uiEndLine).IgnoreResult();
+    if (match[5].matched)
+      plConversionUtils::StringToUInt(match[5].str().c_str(), diag.m_uiEndColumn).IgnoreResult();
+  }
+}
+
+bool plCSharpProjectAssetDocument::OpenLocation(const plScriptDiagnostic& location)
+{
+  plStringBuilder sFile = location.m_sFile;
+  if (sFile.IsEmpty())
+    return false;
+
+  if (!sFile.IsAbsolutePath())
+  {
+    plStringBuilder sAbsolute;
+    if (plFileSystem::ResolvePath(sFile, &sAbsolute, nullptr).Succeeded())
+      sFile = sAbsolute;
+    else
+    {
+      plStringBuilder sInProject = plToolsProject::GetSingleton()->GetProjectDirectory();
+      sInProject.AppendPath(sFile);
+      sFile = sInProject;
+    }
+  }
+  sFile.MakeCleanPath();
+
+  if (!plOSFile::ExistsFile(sFile))
+    return false;
+
+  // The project the file belongs to: the asset named by the problem, else the first C# project whose sources contain it.
+  plStringBuilder sProjectFile;
+  auto findProject = [&](const plAssetInfo* pInfo) -> bool
+  {
+    if (pInfo == nullptr || pInfo->m_Info == nullptr)
+      return false;
+
+    const plCSharpProjectAssetMetaData* pMeta = pInfo->m_Info->GetMetaInfo<plCSharpProjectAssetMetaData>();
+    if (pMeta == nullptr || pMeta->m_sProjectFile.IsEmpty())
+      return false;
+
+    plStringBuilder sProject = pMeta->m_sProjectFile;
+    if (!sProject.IsAbsolutePath())
+    {
+      sProject = pInfo->m_Path.GetAbsolutePath();
+      sProject.PathParentDirectory();
+      sProject.AppendPath(pMeta->m_sProjectFile);
+    }
+    sProject.MakeCleanPath();
+
+    plStringBuilder sProjectDir = sProject.GetFileDirectory();
+    if (!plPathUtils::IsSubPath_NoCase(sProjectDir, sFile))
+      return false;
+
+    sProjectFile = sProject;
+    return true;
+  };
+
+  if (!location.m_sAsset.IsEmpty())
+  {
+    auto pAsset = plAssetCurator::GetSingleton()->FindSubAsset(location.m_sAsset);
+    if (pAsset.isValid())
+      findProject(pAsset->m_pAssetInfo);
+  }
+
+  if (sProjectFile.IsEmpty())
+  {
+    const plAssetCurator::plLockedAssetTable assets = plAssetCurator::GetSingleton()->GetKnownAssets();
+    for (auto it : *assets)
+    {
+      if (findProject(it.Value()))
+        break;
+    }
+  }
+
+  if (!sProjectFile.IsEmpty() && OpenCSharpIDE(sProjectFile, sFile, location.m_uiLine, location.m_uiColumn).Succeeded())
+    return true;
+
+  return plEditorUiServices::OpenFileInDefaultProgram(sFile.GetData());
 }
 
 void plCSharpProjectAssetDocument::OpenScript(plStringView sScriptFile)
@@ -2184,7 +2566,7 @@ void plCSharpProjectAssetDocument::OpenScript(plStringView sScriptFile)
     ShowDocumentStatus(plFmt("{}", status.m_sMessage));
 }
 
-plStatus plCSharpProjectAssetDocument::OpenScriptInIDE(plStringView sScriptFile)
+plStatus plCSharpProjectAssetDocument::OpenScriptInIDE(plStringView sScriptFile, plUInt32 uiLine, plUInt32 uiColumn)
 {
   plStringBuilder projectFile;
   plStringBuilder sourceRoot;
@@ -2201,14 +2583,14 @@ plStatus plCSharpProjectAssetDocument::OpenScriptInIDE(plStringView sScriptFile)
   if (!plPathUtils::IsSubPath_NoCase(sourceRoot, scriptFile))
     return plStatus(plFmt("The C# source file '{}' is outside this script project.", scriptFile));
 
-  const plStatus openStatus = OpenCSharpIDE(projectFile, scriptFile);
+  const plStatus openStatus = OpenCSharpIDE(projectFile, scriptFile, uiLine, uiColumn);
   if (openStatus.Succeeded())
     return plStatus(PL_SUCCESS);
 
   plLog::Warning(
     "Could not open C# project '{}' and script '{}' in the selected IDE: {}",
     projectFile, scriptFile, openStatus.m_sMessage);
-  if (plQtUiServices::OpenFileInDefaultProgram(scriptFile))
+  if (plEditorUiServices::OpenFileInDefaultProgram(scriptFile.GetData()))
     return plStatus(PL_SUCCESS);
 
   return plStatus(plFmt(
@@ -2218,18 +2600,7 @@ plStatus plCSharpProjectAssetDocument::OpenScriptInIDE(plStringView sScriptFile)
 
 void plCSharpProjectAssetDocument::CreateScript()
 {
-  bool bAccepted = false;
-  const QString className = QInputDialog::getText(nullptr, "New C# Script", "Class name:", QLineEdit::Normal, "NewScript", &bAccepted).trimmed();
-  if (!bAccepted)
-    return;
-
-  const plStringBuilder scriptName = className.toUtf8().data();
-  if (!IsValidCSharpIdentifier(scriptName))
-  {
-    ShowDocumentStatus("The C# script name must be a valid identifier.");
-    return;
-  }
-
+  // the source root comes first: the prompt refuses names whose file already exists under it
   plStringBuilder projectFile;
   plStringBuilder sourceRoot;
   plStatus status = ResolveProjectFile(projectFile);
@@ -2240,6 +2611,19 @@ void plCSharpProjectAssetDocument::CreateScript()
     ShowDocumentStatus(plFmt("{}", status.m_sMessage));
     return;
   }
+
+  // the files found before a failure still count; the source root itself is checked on disk
+  plDynamicArray<plString> existingSources;
+  GatherSourceFiles(sourceRoot, existingSources).IgnoreResult();
+
+  bool bAccepted = false;
+  const plString className = plEnginePrompt::GetText("New C# Script", "Class name:", "NewScript", &bAccepted, [&sourceRoot, &existingSources](plStringView sText)
+    { return CheckNewScriptName(sourceRoot, existingSources, sText); });
+  if (!bAccepted)
+    return;
+
+  plStringBuilder scriptName = className;
+  scriptName.Trim();
 
   plStringBuilder scriptFile;
   status = CreateScriptFile(sourceRoot, scriptName, scriptFile);

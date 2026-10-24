@@ -3,6 +3,7 @@
 #include <CSharpPlugin/Runtime/CSharpFunctionProperty.h>
 #include <CSharpPlugin/Runtime/CSharpInstance.h>
 #include <Core/Scripting/ScriptAttributes.h>
+#include <Core/Scripting/ScriptCallScope.h>
 #include <Core/Scripting/ScriptComponent.h>
 #include <Foundation/IO/JSONWriter.h>
 #include <Foundation/IO/MemoryStream.h>
@@ -282,6 +283,8 @@ void plCSharpMessageHandler::Dispatch(
     static_cast<plCSharpInstance*>(pComponent->GetScriptInstance());
   if (pCSharpInstance == nullptr)
     return;
+
+  plScriptCallScope scope(pCSharpInstance, pComponent->GetScriptType(), ref_msg.GetDynamicRTTI()->GetTypeName().GetStartPointer());
 
   if (ref_msg.GetDynamicRTTI() == plGetStaticRTTI<plMsgDeliverCSharpMsg>())
   {

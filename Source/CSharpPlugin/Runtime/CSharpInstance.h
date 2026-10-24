@@ -12,6 +12,7 @@ struct plCSharpFieldInfo
   plUInt64 m_uiId = 0;
   plHashedString m_sName;
   plString m_sManagedType;
+  plDynamicArray<plHashedString> m_FormerNames;
 };
 
 /// Keeps a project generation alive while any resource or live script instance still references it.
@@ -45,11 +46,14 @@ public:
 
   bool IsValid() const { return m_uiInstance != 0; }
 
+  virtual plStringView GetScriptLanguage() const override { return "C#"; }
+
   plResult InvokeLifecycle(plUInt64 uiMethodId, plTime deltaTime = plTime::MakeZero());
   plResult DispatchMessage(plUInt64 uiMessageHandlerId, plStringView sPayloadJson);
   plResult DispatchManagedMessage(plUInt64 uiMessageId, plUInt64 uiPayloadToken);
 
   virtual void SetInstanceVariable(const plHashedString& sName, const plVariant& value) override;
+  virtual void SetInstanceVariables(const plArrayMap<plHashedString, plVariant>& parameters) override;
   virtual plVariant GetInstanceVariable(const plHashedString& sName) override;
   virtual void GetInstanceVariables(plArrayMap<plHashedString, plVariant>& out_parameters) const override;
   virtual bool SupportsTransactionalReload() const override { return true; }

@@ -34,6 +34,8 @@ public readonly struct NativeObject : IEquatable<NativeObject>
     private uint Reserved { get; }
 
     public bool IsValid => Id != 0 && Kind != NativeObjectKind.Invalid;
+    /// <summary>Checks native liveness in the current engine execution scope.</summary>
+    public bool IsAlive => IsValid && NativeBridge.ValidateObject(this, Kind) == NativeCallStatus.Success;
     public bool Equals(NativeObject other) =>
         Id == other.Id && Generation == other.Generation && Kind == other.Kind;
     public override bool Equals(object? obj) => obj is NativeObject other && Equals(other);
@@ -161,8 +163,10 @@ public readonly partial record struct GameObject(NativeObject Native)
     public bool IsValid => Native.Kind == NativeObjectKind.GameObject && Native.IsValid;
 }
 
-public readonly partial record struct Component(NativeObject Native)
+public readonly partial record struct Component(NativeObject Native) : INativeComponent<Component>
 {
+    public static string NativeTypeName => "plComponent";
+    public static Component FromNative(NativeObject native) => new(native);
     public bool IsValid => Native.Kind == NativeObjectKind.Component && Native.IsValid;
 }
 

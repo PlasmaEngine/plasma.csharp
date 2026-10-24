@@ -44,11 +44,45 @@
         <member name="M:Plasma.DisplayNameAttribute.#ctor(System.String)">
             <summary>Overrides the editor-facing name of an exposed value.</summary>
         </member>
+        <member name="T:Plasma.TooltipAttribute">
+            <summary>Sets the editor tooltip of an exposed value. Without it the member's XML summary is used.</summary>
+        </member>
+        <member name="M:Plasma.TooltipAttribute.#ctor(System.String)">
+            <summary>Sets the editor tooltip of an exposed value. Without it the member's XML summary is used.</summary>
+        </member>
+        <member name="T:Plasma.AssetAttribute">
+            <summary>Makes an exposed string an asset picker, e.g. <c>[Asset("Prefab")]</c>.
+            Picked assets are packaged with the scene that uses them.</summary>
+        </member>
+        <member name="M:Plasma.AssetAttribute.#ctor(System.String)">
+            <summary>Makes an exposed string an asset picker, e.g. <c>[Asset("Prefab")]</c>.
+            Picked assets are packaged with the scene that uses them.</summary>
+        </member>
+        <member name="T:Plasma.FormerlySerializedAsAttribute">
+            <summary>Maps an older inspector parameter name to this exposed member during load and reload.
+            Keep this attribute while scenes or prefabs still contain the old name. It does not rewrite
+            application-owned JSON or other custom save formats.</summary>
+        </member>
+        <member name="M:Plasma.FormerlySerializedAsAttribute.#ctor(System.String)">
+            <summary>Maps an older inspector parameter name to this exposed member during load and reload.
+            Keep this attribute while scenes or prefabs still contain the old name. It does not rewrite
+            application-owned JSON or other custom save formats.</summary>
+        </member>
         <member name="T:Plasma.GeneratedMessageAttribute">
             <summary>Marks a value type emitted from a reflected native message descriptor.</summary>
         </member>
         <member name="T:Plasma.ComponentScript">
             <summary>Base class for scripts hosted by an existing native <c>plScriptComponent</c>.</summary>
+        </member>
+        <member name="P:Plasma.ComponentScript.LifetimeCancellation">
+            <summary>Cancellation owned by this instance. Destruction and full reload cancel it;
+            an in-place method update retains it. Background work must not call native APIs.</summary>
+        </member>
+        <member name="M:Plasma.ComponentScript.PostToUpdate(System.Action)">
+            <summary>Queues synchronous work for the next Update callback in this instance's world.
+            Override Update to enable dispatch. Returns false after destruction or if 256 actions
+            are already pending. Async delegates are unsupported: perform I/O in the background
+            and post only the synchronous application of its result.</summary>
         </member>
         <member name="M:Plasma.ComponentScript.Initialize">
             <summary>Called once after the managed object has received its native owner context.</summary>
@@ -347,6 +381,41 @@
         <member name="F:Plasma.ImGui.StackTextBytes">
             <summary>UTF-8 bytes below this length are encoded on the stack.</summary>
         </member>
+        <member name="T:Plasma.InputBindingScheme">
+            <summary>Scheme names used by the input bindings bridge. Separate from the generated InputScheme binding enum.</summary>
+        </member>
+        <member name="T:Plasma.InputRebindState">
+            <summary>The state of the player's interactive rebind session.</summary>
+        </member>
+        <member name="T:Plasma.InputBindingInfo">
+            <summary>One binding of an action, filtered by the queried scheme.</summary>
+        </member>
+        <member name="T:Plasma.InputActionInfo">
+            <summary>One action of the map. Primary and Secondary are the prompts of the first two bindings of the queried scheme.</summary>
+        </member>
+        <member name="T:Plasma.InputBindingsReply">
+            <summary>Reply of an input bindings command. Actions and Values are filled by Query, Prompt by GetPrompt.</summary>
+        </member>
+        <member name="T:Plasma.InputBindings">
+            <summary>Player 0's input action map and saved rebinds, owned by the game application.
+            Call from script update. Completed rebinds, resets and value changes are saved by the engine on its next update.
+            Tuning keys: '&lt;Action&gt;.Sensitivity[.&lt;Scheme&gt;]', '&lt;Action&gt;.InvertX|InvertY[.&lt;Scheme&gt;]', 'DeadZone.&lt;Scheme&gt;'.</summary>
+        </member>
+        <member name="M:Plasma.InputBindings.BeginRebind(System.String,Plasma.InputBindingScheme,System.Int32,Plasma.InputRebindConflict,System.Double,System.Int32,System.Boolean,System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Starts listening for a new slot for the Nth binding of the scheme; an index past the end adds a binding.</summary>
+        </member>
+        <member name="M:Plasma.InputBindings.BeginRebind(System.String,System.String,Plasma.InputBindingScheme,Plasma.InputRebindConflict,System.Double,System.Int32,System.Boolean,System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Starts listening for a new slot for the binding with the given guid.</summary>
+        </member>
+        <member name="M:Plasma.InputBindings.Reset(System.String)">
+            <summary>Removes the overrides of one action, or of all actions when action is null.</summary>
+        </member>
+        <member name="M:Plasma.InputBindings.GetPrompt(System.String,Plasma.InputBindingScheme)">
+            <summary>The display prompt of an action; Any uses the player's active scheme.</summary>
+        </member>
+        <member name="M:Plasma.InputBindings.Execute(System.String,System.Object)">
+            <summary>Runs a raw plInputBindings command; args is serialized to a JSON object.</summary>
+        </member>
         <member name="T:Plasma.Log">
             <summary>Writes gameplay messages to the Plasma log.</summary>
         </member>
@@ -369,10 +438,16 @@
             frozen host ABI does not have to grow every time a capability is added.
             </summary>
         </member>
+        <member name="T:Plasma.INativeComponent`1">
+            <summary>Generated, allocation-free construction and native type mapping for component wrappers.</summary>
+        </member>
         <member name="T:Plasma.NativeObject">
             <summary>
             A generation-checked reference to a native object. It intentionally contains no native pointer.
             </summary>
+        </member>
+        <member name="P:Plasma.NativeObject.IsAlive">
+            <summary>Checks native liveness in the current engine execution scope.</summary>
         </member>
         <member name="T:Plasma.Utf8Span">
             <summary>A borrowed, non-owning view of UTF-8 bytes. Matches <c>plCSharpUtf8Span</c>.</summary>
@@ -423,6 +498,15 @@
         <member name="T:Plasma.ReflectedCall">
             <summary>Generic reflected invocation path used by generated engine wrappers.</summary>
         </member>
+        <member name="T:Plasma.IScriptReloadState">
+            <summary>
+            Opts a script into private-state migration on full assembly reload. State is a versioned,
+            UTF-8 JSON string owned by the script, limited to one MiB. Capture must be side-effect free.
+            Restore runs on the replacement before Initialize; a failure retains the previous instance.
+            Store gameplay values and logical references, never transient native handles or delegates.
+            In-place method updates retain the instance and do not call either method.
+            </summary>
+        </member>
         <member name="T:Plasma.SaveGame">
             <summary>
             Main-thread client for the game-state-owned Save/Load service. Call Update each frame,
@@ -447,6 +531,26 @@
             Returns the automatic persistent ID used by <see cref="T:Plasma.PlasmaScriptAttribute"/> when its
             <see cref="P:Plasma.PlasmaScriptAttribute.Id"/> override is omitted.
             </summary>
+        </member>
+        <member name="T:Plasma.Testing.PlasmaTestAttribute">
+            <summary>Marks a method as a script test. The editor's project checks run it (ScriptTests kind).</summary>
+            <remarks>The method takes no parameters. It is static, or its class has a parameterless constructor.
+            Tests run outside a world, so they test script logic, not native objects.</remarks>
+        </member>
+        <member name="T:Plasma.Testing.AssertFailedException">
+            <summary>Thrown by <see cref="T:Plasma.Testing.Assert"/> when a check fails. The test runner reports its message and place.</summary>
+        </member>
+        <member name="M:Plasma.Testing.AssertFailedException.#ctor(System.String)">
+            <summary>Thrown by <see cref="T:Plasma.Testing.Assert"/> when a check fails. The test runner reports its message and place.</summary>
+        </member>
+        <member name="T:Plasma.Testing.Assert">
+            <summary>Checks for script tests. Each failure throws <see cref="T:Plasma.Testing.AssertFailedException"/>.</summary>
+        </member>
+        <member name="M:Plasma.Testing.Assert.Near(System.Double,System.Double,System.Double,System.String)">
+            <summary>Equal within a tolerance, for floating point results.</summary>
+        </member>
+        <member name="M:Plasma.Testing.Assert.Throws``1(System.Action,System.String)">
+            <summary>Runs the action and fails unless it throws <typeparamref name="TException"/>, which is returned.</summary>
         </member>
         <member name="T:Plasma.WorldMessages">
             <summary>Native message routing helpers for generated Plasma message values.</summary>

@@ -3,7 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <RuntimeFrameworkVersion>10.0.10</RuntimeFrameworkVersion>
-    <RollForward>Disable</RollForward>
+    <RollForward>LatestPatch</RollForward>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

@@ -78,7 +78,7 @@ void plCSharpAction::Execute(const plVariant& value)
   {
     case ActionType::Build:
     {
-      const plTransformStatus status = m_pDocument->BuildProject();
+      const plStatus status = m_pDocument->QueueBuildProject();
       if (status.Failed())
         plLog::Error("C# project build failed: {}", status.m_sMessage);
       break;

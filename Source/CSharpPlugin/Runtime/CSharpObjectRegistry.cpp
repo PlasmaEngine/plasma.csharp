@@ -110,7 +110,11 @@ void plCSharpObjectRegistry::UnregisterObject(plCSharpObjectHandle handle)
   // zero-reference world-backed entries would allow world slot and allocator
   // address reuse to make an old managed handle resolve to a new object.
   if (pEntry->m_uiReferenceCount == 0)
+  {
     m_Entries.Remove(handle.m_uiValue);
+    if (m_Entries.IsEmpty())
+      m_Entries.Compact();
+  }
 }
 
 plCSharpStatus plCSharpObjectRegistry::ValidateObject(

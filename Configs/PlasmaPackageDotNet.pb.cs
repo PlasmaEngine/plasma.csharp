@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Security.Cryptography;
 using PlasmaBuild.Core.Configuration;
@@ -108,16 +110,17 @@ public static class PlasmaPackageDotNet
             return;
         }
 
-        var project = Path.Combine(context.ProjectRoot, "Source", "EditorManaged",
-            "Plasma.ScriptInspector", "Plasma.ScriptInspector.csproj");
+        var script = Path.Combine(context.ProjectRoot, "Scripts", "prepare-csharp-tools.ps1");
         var output = Path.Combine(PlasmaPackageSdk.PackageBinaryDirectory(context), "CSharp", "Tools");
         var configuration = context.Configuration == BuildConfiguration.Debug ? "Debug" : "Release";
 
         rules.PreBuildSteps.Add(new BuildStep
         {
-            Description = "Build the managed C# descriptor inspector",
-            Command = $"dotnet build {Quote(project)} --nologo --configuration {configuration} --output {Quote(output)}",
-            WorkingDirectory = context.ProjectRoot
+            Description = "Build the C# inspector and persistent compiler tools",
+            Command = $"powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {Quote(script)} -ProjectRoot {Quote(context.ProjectRoot)} -Configuration {configuration} -OutputDirectory {Quote(output)}",
+            WorkingDirectory = context.ProjectRoot,
+            Inputs = ManagedInputs(context),
+            Outputs = new List<string> { Path.Combine(output, "Plasma.ScriptInspector.dll"), Path.Combine(output, "Plasma.ScriptCompiler.dll") }
         });
     }
 
@@ -172,8 +175,23 @@ public static class PlasmaPackageDotNet
                 $"-BinaryRoot {Quote(binaryRoot)} -RuntimePublishRoot {Quote(runtimePublishRoot)} " +
                 $"-PrivateRuntimeRoot {Quote(privateRuntimeRoot)} " +
                 $"-RuntimeVersion {RuntimeVersion}",
-            WorkingDirectory = context.ProjectRoot
+            WorkingDirectory = context.ProjectRoot,
+            Inputs = ManagedInputs(context),
+            Outputs = new List<string> { Path.Combine(binaryRoot, "Plasma.ManagedHost.dll"), Path.Combine(binaryRoot, "Plasma.ScriptCore.dll"),
+                Path.Combine(binaryRoot, "M0Game", "Plasma.Engine.Generator.dll") }
         });
+    }
+
+    private static List<string> ManagedInputs(BuildContext context)
+    {
+        var inputs = Directory.EnumerateFiles(Path.Combine(context.ProjectRoot, "Source"), "*", SearchOption.AllDirectories)
+            .Where(path => !path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(part => part is "bin" or "obj"))
+            .Where(path => Path.GetExtension(path) is ".cs" or ".csproj" or ".props" or ".targets").ToList();
+        inputs.Add(Path.Combine(context.ProjectRoot, "global.json"));
+        inputs.Add(Path.Combine(context.ProjectRoot, "Scripts", "prepare-csharp-runtime.ps1"));
+        inputs.Add(Path.Combine(context.ProjectRoot, "Scripts", "prepare-csharp-tools.ps1"));
+        inputs.Add(Path.Combine(context.ProjectRoot, "Configs", "PlasmaPackageDotNet.pb.cs"));
+        return inputs;
     }
 
     private static bool HasExpectedHostFiles(string hostRoot)

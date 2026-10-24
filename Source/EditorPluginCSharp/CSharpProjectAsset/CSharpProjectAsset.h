@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Core/Scripting/ScriptDiagnostic.h>
 #include <EditorFramework/Assets/SimpleAssetDocument.h>
 #include <EditorPluginCSharp/CSharpProjectAsset/CSharpProjectDescriptors.h>
 
@@ -27,6 +28,7 @@ public:
   plString m_sSourceRoot = "Scripts";
   plString m_sBuildConfiguration = "Development";
   plString m_sBindingManifest = "Intermediate/PlasmaBindings.json";
+  bool m_bUsePersistentCompiler = true;
 
   plString m_sLastGoodDescriptorJson;
   plDynamicArray<plString> m_LastGoodSources;
@@ -41,6 +43,7 @@ public:
   /// descriptor inspector does not have to run.
   plUInt64 m_uiLastGoodEntryAssemblyHash = 0;
   plString m_sBuildDiagnostics;
+  plUInt64 m_uiBuildRequest = 0;
 };
 
 class PL_EDITORPLUGINCSHARP_DLL plCSharpProjectAssetDocument : public plSimpleAssetDocument<plCSharpProjectAssetProperties>
@@ -51,10 +54,21 @@ public:
   plCSharpProjectAssetDocument(plStringView sDocumentPath);
 
   plTransformStatus BuildProject();
+  plStatus QueueBuildProject();
   void OpenProject();
   void OpenScript();
   void OpenScript(plStringView sScriptFile);
-  plStatus OpenScriptInIDE(plStringView sScriptFile);
+  plStatus OpenScriptInIDE(plStringView sScriptFile, plUInt32 uiLine = 0, plUInt32 uiColumn = 0);
+
+  /// \brief Shows the compiler output of a build that failed in an asset processor on the Problems page, as a build in
+  /// the editor would.
+  void ShowBackgroundBuildDiagnostics(plStringView sDiagnostics) { UpdateDiagnostics(sDiagnostics); }
+
+  /// \brief The compiler's errors and warnings of a build log as script diagnostics, one per distinct place and code.
+  static void ParseBuildDiagnostics(plStringView sDiagnostics, plDynamicArray<plScriptDiagnostic>& out_diagnostics);
+
+  /// \brief Opens a C# problem or stack frame in the configured IDE at its line (the script tools' opener for "C#").
+  static bool OpenLocation(const plScriptDiagnostic& location);
   void CreateScript();
 
   static plStatus UpdateBindingSchemaStamp(bool* out_pWasWritten = nullptr);
@@ -84,7 +98,7 @@ private:
   plStatus ResolveBindingManifest(plStringView sProjectFile, plStringBuilder& out_sBindingManifest) const;
   plStatus ExportBindingManifest(plStringView sBindingManifest, plUInt64& out_uiSchemaHash) const;
   plStatus RunProjectBuild(plStringView sProjectFile, plStringView sBindingManifest,
-    plStringView sOutputDirectory, plStringBuilder& out_sDiagnostics) const;
+    plStringView sOutputDirectory, plStringBuilder& out_sDiagnostics, bool bUseCli = false) const;
   /// Resolves the built assembly. \a sCachedTargetFileName short-circuits the MSBuild property query
   /// when the project file has not changed since it produced that name.
   plStatus FindEntryAssembly(plStringView sProjectFile, plStringView sOutputDirectory,
@@ -106,6 +120,7 @@ private:
     plUInt64 uiSchemaHash, plUInt64 uiProjectFileHash, plUInt64 uiEntryAssemblyHash, plStringView sDiagnostics);
   void UpdateDiagnostics(plStringView sDiagnostics);
   void LogBuildOutput(plStringView sDiagnostics, bool bBuildFailed) const;
+  void ReportBuildDiagnostics(plStringView sDiagnostics) const;
 
   plString m_sPreparedEntryAssembly;
   plUInt64 m_uiPreparedBindingSchemaHash = 0;

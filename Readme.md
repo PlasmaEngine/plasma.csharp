@@ -18,7 +18,10 @@ hostFxrParameters.dotnet_root = bUsePrivateRuntime ? privateDotNetRootWide.GetDa
 ```
 
 Install the component and the package is self-contained. Skip it and `hostfxr` resolves a .NET 10
-runtime installed on the machine instead — which anyone with the .NET SDK already has.
+runtime installed on the machine instead. The host requires .NET 10.0.10 or a compatible newer
+10.0 patch; having a .NET SDK installed does not guarantee that runtime requirement is met.
+The bundled 10.0.10 runtime is the recommended default. Engine ABI compatibility is checked
+separately and is not relaxed by runtime patch selection.
 
 Blobs are content-addressed, so the runtime is uploaded once and every later version of this package
 that does not change it resolves to the same bytes: no re-upload, and no re-download for anyone who
@@ -26,14 +29,18 @@ already has it.
 
 ## Layout
 
+See [Workflow and reload](Documentation/WorkflowAndReload.md) for setup, supported edits, state
+preservation, inspector fields, async ownership, debugging, and current limitations.
+
 ```
 Package.plPackage        the manifest - identity, compatibility, components
 CSharp.plPluginBundle    legacy descriptor, kept until the engine reads manifests directly
 Source/
   CSharpPlugin/          runtime -> plCSharpPlugin
     Managed/             the .NET projects: ManagedHost, ScriptCore, Engine.Generator, M0Game
-  EditorPluginCSharp/    editor  -> plEditorPluginCSharp  (Qt: C# project asset)
+  EditorPluginCSharp/    editor  -> plEditorPluginCSharp  (C# project asset)
   EditorManaged/         Plasma.ScriptInspector, the descriptor tool the editor shells out to
+EditorIcons/             editor icons, registered as an icon folder by the editor plugin
 Scripts/                 the managed build and .NET runtime layout scripts
 Tests/                   the C# host test, moved here with the code it exercises
 Configs/                 build rules for building against an installed engine SDK

@@ -406,6 +406,12 @@ public sealed unsafe class ManagedHostAbiTests
                 @"Source: [^\r\n]*RotatingBeacon\.cs\([1-9]\d*,[1-9]\d*\)\.",
                 lifecycleError);
             Assert.Contains("Intentional source-location test failure", lifecycleError, StringComparison.Ordinal);
+            Assert.Contains("Update paused", lifecycleError, StringComparison.Ordinal);
+            Assert.Equal(CSharpStatus.Success, api.InvokeMethod(instance, (ulong)ScriptLifecycleMethod.Update, &update, 1, &result));
+            throwOnUpdate.Payload0 = 0;
+            Assert.Equal(CSharpStatus.Success, api.SetField(instance,
+                StableId.ExposedField(ScriptName, nameof(RotatingBeacon.ThrowOnUpdate)), &throwOnUpdate));
+            Assert.Equal(CSharpStatus.Success, api.InvokeMethod(instance, (ulong)ScriptLifecycleMethod.Update, &update, 1, &result));
 
             long probeResult = 0;
             Assert.Equal(CSharpStatus.Success, api.RunM0Probe(41, &probeResult));

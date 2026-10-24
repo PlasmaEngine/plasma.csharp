@@ -434,6 +434,11 @@ plResult plCSharpInstance::InvokeLifecycle(plUInt64 uiMethodId, plTime deltaTime
     pApi->m_InvokeMethod(m_uiInstance, uiMethodId, pArguments, uiArgumentCount, &result);
   pApi->m_ReleaseValue(&result);
 
+  // Lifecycle overrides are optional. Full-reload preparation must also work for scripts
+  // that have no Initialize override, matching normal ScriptRTTI dispatch.
+  if (status == plCSharpStatus::MemberNotFound && uiMethodId < plComponent_ScriptBaseClassFunctions::Count)
+    return PL_SUCCESS;
+
   if (status != plCSharpStatus::Success)
   {
     const plUInt8 uiFailureBit = uiMethodId < plComponent_ScriptBaseClassFunctions::Count
@@ -528,6 +533,12 @@ const plCSharpFieldInfo* plCSharpInstance::FindField(const plHashedString& sName
       return &field;
   }
 
+  for (const plCSharpFieldInfo& field : m_pClassData->m_Fields)
+  {
+    if (field.m_FormerNames.Contains(sName))
+      return &field;
+  }
+
   return nullptr;
 }
 
@@ -538,9 +549,25 @@ plResult plCSharpInstance::SetField(
   if (pApi == nullptr || m_uiInstance == 0)
     return PL_FAILURE;
 
+  // Object fields arrive as the handle the script component resolved, or as the editor's
+  // unresolved reference string when nothing is picked.
+  plVariant resolved = value;
+  if (value.IsA<plGameObjectHandle>())
+  {
+    plGameObject* pObject = nullptr;
+    if (GetWorld() != nullptr && GetWorld()->TryGetObject(value.Get<plGameObjectHandle>(), pObject))
+      resolved = plTypedPointer(pObject, plGetStaticRTTI<plGameObject>());
+    else
+      resolved = plVariant();
+  }
+  else if (field.m_sManagedType == "Plasma.GameObject" && value.IsA<plString>())
+  {
+    resolved = plVariant();
+  }
+
   plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
   plCSharpValue managedValue;
-  if (VariantToManagedValue(value, managedValue).Failed())
+  if (VariantToManagedValue(resolved, managedValue).Failed())
   {
     plLog::Error("C# exposed field '{}' does not support native value type '{}'.",
       field.m_sName, value.GetType());
@@ -597,6 +624,8 @@ plResult plCSharpInstance::PrepareForReload(
     for (const auto& entry : values)
     {
       const plCSharpFieldInfo* pField = FindField(entry.key);
+      if (pField != nullptr && entry.key != pField->m_sName && values.Find(pField->m_sName) != plInvalidIndex)
+        continue; // An explicit current-name value wins over an older serialized alias.
       if (pField != nullptr && SetField(*pField, entry.value).Failed())
         return PL_FAILURE;
     }
@@ -605,7 +634,42 @@ plResult plCSharpInstance::PrepareForReload(
 
   PL_SUCCEED_OR_RETURN(applyValues(parameters));
   PL_SUCCEED_OR_RETURN(applyValues(reloadState));
+  const plCSharpManagedApiV1* pApi = plCSharpProjectRuntime::GetSingleton().GetManagedApi();
+  for (const auto& entry : reloadState)
+  {
+    if (entry.key.GetView() == "__PlasmaReloadCaptureFailed")
+      return PL_FAILURE;
+    if (entry.key.GetView() != "__PlasmaReloadStateJson")
+      continue;
+    void* pExtension = nullptr;
+    const char* szName = "Plasma.ReloadState";
+    plCSharpUtf8Span extensionName{szName, static_cast<plUInt32>(strlen(szName))};
+    if (pApi == nullptr || pApi->m_QueryExtension(extensionName, 1, &pExtension) != plCSharpStatus::Success || pExtension == nullptr)
+      return PL_FAILURE;
+    const auto* pState = static_cast<const plCSharpManagedReloadStateApiV1*>(pExtension);
+    const plString& json = entry.value.Get<plString>();
+    plCSharpUtf8Span state{json.GetData(), json.GetElementCount()};
+    plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
+    const plCSharpStatus status = pState->m_Restore(m_uiInstance, state);
+    if (status != plCSharpStatus::Success)
+    {
+      if (plCSharpHost* pHost = plCSharpHost::GetSingleton())
+        pHost->LogManagedError("restore private reload state", status);
+      return PL_FAILURE;
+    }
+  }
   return InvokeLifecycle(plComponent_ScriptBaseClassFunctions::Initialize);
+}
+
+void plCSharpInstance::SetInstanceVariables(const plArrayMap<plHashedString, plVariant>& parameters)
+{
+  for (const auto& entry : parameters)
+  {
+    const plCSharpFieldInfo* pField = FindField(entry.key);
+    if (pField == nullptr || (entry.key != pField->m_sName && parameters.Find(pField->m_sName) != plInvalidIndex))
+      continue;
+    SetField(*pField, entry.value).IgnoreResult();
+  }
 }
 
 void plCSharpInstance::CancelReloadPreparation()
@@ -636,5 +700,30 @@ void plCSharpInstance::GetInstanceVariables(
     const plVariant value = GetField(field);
     if (value.IsValid())
       out_parameters.Insert(field.m_sName, value);
+  }
+  const plCSharpManagedApiV1* pApi = plCSharpProjectRuntime::GetSingleton().GetManagedApi();
+  void* pExtension = nullptr;
+  const char* szName = "Plasma.ReloadState";
+  plCSharpUtf8Span extensionName{szName, static_cast<plUInt32>(strlen(szName))};
+  if (pApi == nullptr || pApi->m_QueryExtension(extensionName, 1, &pExtension) != plCSharpStatus::Success || pExtension == nullptr)
+    return;
+  const auto* pState = static_cast<const plCSharpManagedReloadStateApiV1*>(pExtension);
+  plCSharpBuffer buffer;
+  plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
+  const plCSharpStatus status = pState->m_Capture(m_uiInstance, &buffer);
+  if (status == plCSharpStatus::Success)
+  {
+    plHashedString key;
+    key.Assign("__PlasmaReloadStateJson");
+    out_parameters.Insert(key, plString(plStringView(static_cast<const char*>(buffer.m_pData), buffer.m_uiSize)));
+    pApi->m_FreeBuffer(&buffer);
+  }
+  else if (status != plCSharpStatus::Unsupported)
+  {
+    if (plCSharpHost* pHost = plCSharpHost::GetSingleton())
+      pHost->LogManagedError("capture private reload state", status);
+    plHashedString key;
+    key.Assign("__PlasmaReloadCaptureFailed");
+    out_parameters.Insert(key, true);
   }
 }

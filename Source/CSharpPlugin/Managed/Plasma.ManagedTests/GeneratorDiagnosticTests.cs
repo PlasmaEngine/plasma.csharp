@@ -8,6 +8,39 @@ namespace Plasma.ManagedTests;
 public sealed class GeneratorDiagnosticTests
 {
     [Fact]
+    public void GeneratesFormerNamesAndNamedEnumValues()
+    {
+        string generated = RunGenerator("""
+            using Plasma;
+            public enum Mode : long { Left = -2, Right = 7 }
+            [PlasmaScript] public sealed partial class RenameScript : ComponentScript
+            {
+                [Expose, FormerlySerializedAs("OldMode")] public Mode CurrentMode;
+            }
+            """);
+        Assert.Contains("[\"FormerName.0\"] = \"OldMode\"", generated);
+        Assert.Contains("[\"Enum.Value.Left\"] = \"-2\"", generated);
+        Assert.Contains("[\"Enum.Value.Right\"] = \"7\"", generated);
+        Assert.Contains("[\"Enum.Flags\"] = \"false\"", generated);
+    }
+
+    [Fact]
+    public void RejectsAmbiguousFormerNames()
+    {
+        var compilation = CreateCompilation("""
+            using Plasma;
+            [PlasmaScript] public sealed partial class RenameScript : ComponentScript
+            {
+                [Expose, FormerlySerializedAs("Other")] public int Current;
+                [Expose] public int Other;
+            }
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ScriptDescriptorGenerator());
+        driver = driver.RunGenerators(compilation);
+        Assert.Contains(driver.GetRunResult().Diagnostics, diagnostic => diagnostic.Id == "PLCS006" && diagnostic.GetMessage().Contains("conflicts"));
+    }
+
+    [Fact]
     public void ReportsInvalidScriptShapeAtCompileTime()
     {
         const string source =
@@ -557,11 +590,21 @@ public sealed class GeneratorDiagnosticTests
             }
             """;
 
+        // The API descriptions become doc comments; markup in them is escaped.
+        const string docs = """
+            {
+              "version": 1,
+              "types": { "plGameObject": "An object in a world." },
+              "members": { "plGameObject::Name": "The name <shown> in the editor." }
+            }
+            """;
+
         CSharpCompilation compilation = CreateCompilation(string.Empty);
         var additionalText = new InMemoryAdditionalText("PlasmaBindings.json", manifest);
+        var docsText = new InMemoryAdditionalText("PlasmaScriptDocs.json", docs);
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             new[] { new BindingManifestGenerator().AsSourceGenerator() },
-            new AdditionalText[] { additionalText },
+            new AdditionalText[] { additionalText, docsText },
             (CSharpParseOptions)compilation.SyntaxTrees.Single().Options);
 
         driver = driver.RunGeneratorsAndUpdateCompilation(
@@ -577,6 +620,12 @@ public sealed class GeneratorDiagnosticTests
             static diagnostic =>
                 diagnostic.Id == "PLB002" &&
                 diagnostic.Severity == DiagnosticSeverity.Info);
+
+        string documentedSource = string.Join(
+            "\n",
+            driver.GetRunResult().GeneratedTrees.Select(static tree => tree.GetText().ToString()));
+        Assert.Contains("/// <summary>An object in a world.</summary>", documentedSource, StringComparison.Ordinal);
+        Assert.Contains("/// <summary>The name &lt;shown&gt; in the editor.</summary>", documentedSource, StringComparison.Ordinal);
         Assert.DoesNotContain(
             generated.GetDiagnostics(),
             static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);

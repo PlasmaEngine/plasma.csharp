@@ -34,3 +34,7 @@ Thumbs.db
 # Regenerated at publish time by PackageInspector --write-checksums.
 # A committed copy goes stale the moment anything ships.
 Package.sha256
+
+# .NET build output of the managed projects (the package payload is Bin/ at the root)
+Source/**/bin/
+Source/**/obj/

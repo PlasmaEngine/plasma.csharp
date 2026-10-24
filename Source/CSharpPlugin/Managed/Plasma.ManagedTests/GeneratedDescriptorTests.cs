@@ -46,6 +46,7 @@ public sealed class GeneratedDescriptorTests
         Assert.Equal("0", speed.EditorMetadata["Range.Minimum"]);
         Assert.Equal("720", speed.EditorMetadata["Range.Maximum"]);
         Assert.Equal("Motion", speed.EditorMetadata["Category"]);
+        Assert.Equal("Turn rate in degrees per second.", speed.EditorMetadata["Tooltip"]);
 
         descriptor.Lifecycle[ScriptLifecycleMethod.OnSimulationStarted](instance, default);
         descriptor.Lifecycle[ScriptLifecycleMethod.Update](instance, Time.FromSeconds(0.25));

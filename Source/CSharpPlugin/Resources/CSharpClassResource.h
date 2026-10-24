@@ -24,6 +24,11 @@ private:
     plReflectedClass& inout_owner, plWorld* pWorld) const override;
 
   plSharedPtr<const plCSharpClassData> m_pClassData;
+
+  // A reload unloads before it loads again. The unloaded class and its type wait here, so a load whose generation was
+  // patched in place keeps the type, and with it the live instances.
+  plSharedPtr<const plCSharpClassData> m_pUnloadedClassData;
+  plSharedPtr<plScriptRTTI> m_pUnloadedType;
 };
 
 /// Resolves "<shared-project-output>|<class-subasset-guid>" and loads the shared container.

@@ -62,10 +62,19 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     "PlasmaBindings.json",
                     StringComparison.OrdinalIgnoreCase));
 
-        context.RegisterSourceOutput(manifests, Emit);
+        // The engine's API descriptions, written beside the manifest by the editor; optional.
+        IncrementalValueProvider<ImmutableArray<AdditionalText>> docs = context.AdditionalTextsProvider
+            .Where(static file =>
+                Path.GetFileName(file.Path).Equals(
+                    "PlasmaScriptDocs.json",
+                    StringComparison.OrdinalIgnoreCase))
+            .Collect();
+
+        context.RegisterSourceOutput(manifests.Combine(docs),
+            static (context, input) => Emit(context, input.Left, input.Right.FirstOrDefault()));
     }
 
-    private static void Emit(SourceProductionContext context, AdditionalText manifestFile)
+    private static void Emit(SourceProductionContext context, AdditionalText manifestFile, AdditionalText? docsFile)
     {
         try
         {
@@ -96,7 +105,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 return;
             }
 
-            var renderer = new BindingRenderer(manifest, context);
+            var renderer = new BindingRenderer(manifest, context, ApiDocs.Parse(docsFile?.GetText(context.CancellationToken)?.ToString()));
             context.AddSource(
                 "PlasmaEngineBindings.g.cs",
                 SourceText.From(renderer.Render(), Encoding.UTF8));
@@ -117,11 +126,13 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
         private readonly Dictionary<string, BindingType> _typesById;
         private readonly Dictionary<string, BindingType> _typesByName;
         private readonly Dictionary<string, BindingProperty> _propertiesById;
+        private readonly ApiDocs _docs;
 
-        public BindingRenderer(BindingManifest manifest, SourceProductionContext context)
+        public BindingRenderer(BindingManifest manifest, SourceProductionContext context, ApiDocs docs)
         {
             _manifest = manifest;
             _context = context;
+            _docs = docs;
             _typesById = manifest.Types.ToDictionary(static type => type.Id, StringComparer.Ordinal);
             _typesByName = manifest.Types.ToDictionary(static type => type.NativeName, StringComparer.Ordinal);
             _propertiesById = manifest.Properties.ToDictionary(
@@ -261,6 +272,8 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
 
                 string typeName = TypeName(type.NativeName);
                 bool wellKnown = typeName is "World" or "GameObject" or "Component";
+                bool componentWrapper = !wellKnown && GetTypeHierarchy(type).Any(parent => parent.NativeName == "plComponent");
+                RenderDoc(source, "    ", _docs.Type(type.NativeName));
                 if (wellKnown)
                 {
                     source.Append("    public static partial class ")
@@ -271,9 +284,17 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 {
                     source.Append("    public readonly partial record struct ")
                         .Append(Identifier(typeName))
-                        .AppendLine("(global::Plasma.NativeObject Native)");
+                        .Append("(global::Plasma.NativeObject Native)");
+                    if (componentWrapper)
+                        source.Append(" : global::Plasma.INativeComponent<").Append(Identifier(typeName)).Append('>');
+                    source.AppendLine();
                 }
                 source.AppendLine("    {");
+                if (componentWrapper)
+                {
+                    source.Append("        public static string NativeTypeName => \"").Append(Escape(type.NativeName)).AppendLine("\";");
+                    source.Append("        public static ").Append(Identifier(typeName)).AppendLine(" FromNative(global::Plasma.NativeObject native) => new(native);");
+                }
 
                 foreach (BindingProperty property in GetInheritedProperties(type))
                 {
@@ -299,38 +320,32 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     source.AppendLine(
                         """
                                 public static bool TryGetComponent<T>(this global::Plasma.GameObject self, out T component)
-                                    where T : struct
+                                    where T : struct, global::Plasma.INativeComponent<T>
                                 {
                                     global::Plasma.Component nativeComponent =
-                                        self.FindComponentByTypeName("pl" + typeof(T).Name);
+                                        self.FindComponentByTypeName(T.NativeTypeName);
                                     if (!nativeComponent.IsValid)
                                     {
                                         component = default;
                                         return false;
                                     }
 
-                                    component = (T)(global::System.Activator.CreateInstance(
-                                        typeof(T), new object?[] { nativeComponent.Native })
-                                        ?? throw new global::System.InvalidOperationException(
-                                            $"Managed component wrapper '{typeof(T)}' has no NativeObject constructor."));
+                                    component = T.FromNative(nativeComponent.Native);
                                     return true;
                                 }
 
                                 public static T CreateComponent<T>(this global::Plasma.GameObject self)
-                                    where T : struct
+                                    where T : struct, global::Plasma.INativeComponent<T>
                                 {
                                     global::Plasma.Component nativeComponent =
-                                        self.CreateComponentByTypeName("pl" + typeof(T).Name);
+                                        self.CreateComponentByTypeName(T.NativeTypeName);
                                     if (!nativeComponent.IsValid)
                                     {
                                         throw new global::System.InvalidOperationException(
-                                            $"Native component type 'pl{typeof(T).Name}' could not be created.");
+                                            $"Native component type '{T.NativeTypeName}' could not be created.");
                                     }
 
-                                    return (T)(global::System.Activator.CreateInstance(
-                                        typeof(T), new object?[] { nativeComponent.Native })
-                                        ?? throw new global::System.InvalidOperationException(
-                                            $"Managed component wrapper '{typeof(T)}' has no NativeObject constructor."));
+                                    return T.FromNative(nativeComponent.Native);
                                 }
                         """);
                 }
@@ -397,6 +412,21 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 "Component" or
                 "Log";
 
+        /// <summary>A one-paragraph XML doc comment, or nothing for an empty description.</summary>
+        private static void RenderDoc(StringBuilder source, string indent, string description)
+        {
+            if (description.Length == 0)
+                return;
+
+            string text = description
+                .Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;")
+                .Replace("\r", " ")
+                .Replace("\n", " ");
+            source.Append(indent).Append("/// <summary>").Append(text).AppendLine("</summary>");
+        }
+
         private void RenderProperty(
             StringBuilder source,
             BindingProperty property,
@@ -414,6 +444,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             string propertyName = PropertyName(property.NativeName);
             string bindingName = $"{TypeName(property.DeclaringTypeName)}.{propertyName}";
             string target = extensionReceiverType is null ? "Native" : "self.Native";
+            RenderDoc(source, "        ", _docs.Member(property.DeclaringTypeName, property.NativeName));
             if (extensionReceiverType is not null)
             {
                 source.Append("        public static ").Append(type)
@@ -525,6 +556,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 return;
             }
 
+            RenderDoc(source, "        ", _docs.Member(function.DeclaringTypeName, function.NativeName));
             source.Append("        public ");
             if (!instanceMethod || extensionReceiverType is not null)
             {
@@ -1092,6 +1124,63 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 manifest.Diagnostics.Add(BindingDiagnostic.Parse(item));
             }
             return manifest;
+        }
+    }
+
+    /// <summary>The engine's API descriptions (ScriptApiDocs.json, copied as PlasmaScriptDocs.json):
+    /// types by native name, members by "Type::Member".</summary>
+    private sealed class ApiDocs
+    {
+        private readonly Dictionary<string, string> _types = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _members = new(StringComparer.Ordinal);
+
+        public static ApiDocs Parse(string? json)
+        {
+            var docs = new ApiDocs();
+            if (string.IsNullOrEmpty(json))
+                return docs;
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json!);
+                Read(document.RootElement, "types", docs._types);
+                Read(document.RootElement, "members", docs._members);
+            }
+            catch (JsonException)
+            {
+                // Bindings without doc comments are still correct bindings.
+            }
+
+            return docs;
+        }
+
+        public string Type(string nativeName) =>
+            _types.TryGetValue(nativeName, out string? text) ? text : string.Empty;
+
+        /// <summary>Reflected names often differ from the C++ ones by a "Reflection_" prefix.</summary>
+        public string Member(string nativeType, string nativeMember)
+        {
+            if (_members.TryGetValue(nativeType + "::" + nativeMember, out string? text))
+                return text;
+
+            const string reflectionPrefix = "Reflection_";
+            if (nativeMember.StartsWith(reflectionPrefix, StringComparison.Ordinal) &&
+                _members.TryGetValue(nativeType + "::" + nativeMember.Substring(reflectionPrefix.Length), out text))
+                return text;
+
+            return string.Empty;
+        }
+
+        private static void Read(JsonElement root, string name, Dictionary<string, string> target)
+        {
+            if (!root.TryGetProperty(name, out JsonElement entries) || entries.ValueKind != JsonValueKind.Object)
+                return;
+
+            foreach (JsonProperty entry in entries.EnumerateObject())
+            {
+                if (entry.Value.ValueKind == JsonValueKind.String)
+                    target[entry.Name] = entry.Value.GetString() ?? string.Empty;
+            }
         }
     }
 

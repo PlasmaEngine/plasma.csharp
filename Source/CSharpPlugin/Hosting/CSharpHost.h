@@ -28,6 +28,9 @@ public:
 
   void LogManagedError(plStringView sOperation, plCSharpStatus status) const;
 
+  /// Reports a managed error to the script tools with the user's file and line when the message names them.
+  void ReportManagedError(plStringView sOperation, plStringView sMessage) const;
+
 private:
   enum class InitializationState : plUInt8
   {

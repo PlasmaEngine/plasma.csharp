@@ -9,6 +9,8 @@
 #include <Core/World/Component.h>
 #include <Core/World/GameObject.h>
 #include <Core/Scripting/ScriptAttributes.h>
+#include <Core/Scripting/ScriptDiagnostic.h>
+#include <Foundation/Utilities/ConversionUtils.h>
 #include <Core/World/World.h>
 #include <Core/World/WorldDesc.h>
 #include <Foundation/Basics/Platform/Win/IncludeWindows.h>
@@ -569,6 +571,9 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
   initializeParameters.dotnet_root = bUsePrivateRuntime ? privateDotNetRootWide.GetData() : nullptr;
 
   hostfxr_handle pHostContext = nullptr;
+  // This must be configured before CoreCLR starts. Shipping players retain the normal runtime.
+  if (plStartup::HasApplicationTag("editorengineprocess"))
+    SetEnvironmentVariableW(L"DOTNET_MODIFIABLE_ASSEMBLIES", L"debug");
   const plInt32 iInitializeResult = initializeForConfig(
     runtimeConfigWide.GetData(), &initializeParameters, &pHostContext);
   if (!IsHostSuccess(iInitializeResult) || pHostContext == nullptr)
@@ -846,6 +851,41 @@ plResult plCSharpHost::RunM0StressTest(plUInt32 uiCycles)
   return PL_SUCCESS;
 }
 
+void plCSharpHost::ReportManagedError(plStringView sOperation, plStringView sMessage) const
+{
+  // The managed host names the user's frame as "Source: <file>(<line>,<col>)." in front of the exception text.
+  plScriptDiagnostic diag;
+  diag.m_sLanguage = "C#";
+  diag.m_Severity = plScriptDiagnosticSeverity::Error;
+  diag.m_Origin = plScriptDiagnosticOrigin::Runtime;
+  diag.m_sInstance = sOperation;
+
+  plStringView sFirstLine = sMessage;
+  if (const char* szBreak = sMessage.FindSubString("\n"))
+    sFirstLine = plStringView(sMessage.GetStartPointer(), szBreak);
+  diag.m_sMessage = sFirstLine;
+
+  if (const char* szSource = sMessage.FindSubString("Source: "))
+  {
+    const plStringView sAfter(szSource + 8, sMessage.GetEndPointer());
+    const char* szOpen = sAfter.FindSubString("(");
+    const char* szComma = szOpen != nullptr ? plStringView(szOpen, sAfter.GetEndPointer()).FindSubString(",") : nullptr;
+    const char* szClose = szComma != nullptr ? plStringView(szComma, sAfter.GetEndPointer()).FindSubString(")") : nullptr;
+    if (szOpen != nullptr && szComma != nullptr && szClose != nullptr)
+    {
+      diag.m_sFile = plStringView(sAfter.GetStartPointer(), szOpen);
+      plConversionUtils::StringToUInt(plStringView(szOpen + 1, szComma), diag.m_uiLine).IgnoreResult();
+      plConversionUtils::StringToUInt(plStringView(szComma + 1, szClose), diag.m_uiColumn).IgnoreResult();
+    }
+  }
+
+  // The exception's own lines (type and message, then the stack) follow the managed host's summary.
+  if (const char* szException = sMessage.FindSubString("\n"))
+    diag.m_sStack = plStringView(szException + 1, sMessage.GetEndPointer());
+
+  plScriptDiagnostics::Report(diag);
+}
+
 void plCSharpHost::LogManagedError(plStringView sOperation, plCSharpStatus status) const
 {
   const plStringView sStatusName = GetCSharpStatusName(status);
@@ -860,6 +900,7 @@ void plCSharpHost::LogManagedError(plStringView sOperation, plCSharpStatus statu
   {
     const plStringView sMessage(static_cast<const char*>(error.m_pData), error.m_uiSize);
     plLog::Error("C# {} failed: {}\n[Diagnostic: {} ({})]", sOperation, sMessage, sStatusName, static_cast<plInt32>(status));
+    ReportManagedError(sOperation, sMessage);
     m_ManagedApi.m_FreeBuffer(&error);
     return;
   }

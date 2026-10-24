@@ -10,7 +10,7 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace Plasma.ManagedHost;
 
-public static unsafe class Bootstrap
+public static unsafe partial class Bootstrap
 {
     private const uint AbiVersion = 1;
     private const uint ValueLayoutVersion = 2;
@@ -223,6 +223,8 @@ public static unsafe class Bootstrap
             {
                 return Fail(CSharpStatus.InvalidArgument, "Invalid generation load descriptor.");
             }
+            if ((desc->Flags & ~1U) != 0) return Fail(CSharpStatus.InvalidArgument, "Unknown generation load flags.");
+            bool immutable = (desc->Flags & 1U) != 0;
 
             string assemblyPath = Decode(desc->AssemblyPath);
             if (!Path.IsPathFullyQualified(assemblyPath) || !File.Exists(assemblyPath))
@@ -236,13 +238,13 @@ public static unsafe class Bootstrap
             string shadowRoot = string.IsNullOrWhiteSpace(requestedShadowRoot)
                 ? Path.Combine(Path.GetTempPath(), "Plasma", "CSharp", "Generations")
                 : Path.GetFullPath(requestedShadowRoot);
-            string shadowDirectory = Path.Combine(shadowRoot, id.ToString("X16", CultureInfo.InvariantCulture));
-            ValidateShadowCopyLocation(assemblyPath, shadowDirectory);
+            string shadowDirectory = immutable ? string.Empty : Path.Combine(shadowRoot, id.ToString("X16", CultureInfo.InvariantCulture));
+            if (!immutable) ValidateShadowCopyLocation(assemblyPath, shadowDirectory);
 
             GenerationLoadContext? loadContext = null;
             try
             {
-                string shadowAssemblyPath = ShadowCopyAssemblyDirectory(assemblyPath, shadowDirectory);
+                string shadowAssemblyPath = immutable ? assemblyPath : ShadowCopyAssemblyDirectory(assemblyPath, shadowDirectory);
                 loadContext = new GenerationLoadContext(shadowAssemblyPath);
                 Assembly assembly = loadContext.LoadFromAssemblyPath(shadowAssemblyPath);
                 IReadOnlyList<ScriptTypeDescriptor> descriptors = DiscoverDescriptors(assembly);
@@ -251,6 +253,10 @@ public static unsafe class Bootstrap
                 byte[] manifest = BuildManifest(id, assembly, descriptors, commands, toolDescriptors);
                 var loadedGeneration =
                     new Generation(id, loadContext, shadowDirectory, descriptors, commands, tools, manifest);
+                loadedGeneration.Assembly = assembly;
+                loadedGeneration.BaseMvid = assembly.ManifestModule.ModuleVersionId;
+                loadedGeneration.CurrentMvid = loadedGeneration.BaseMvid;
+                loadedGeneration.DependencyFingerprint = DependencyFingerprint(shadowAssemblyPath);
 
                 lock (Sync)
                 {
@@ -303,6 +309,7 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus CreateInstanceExport(CSharpInstanceCreateDesc* desc, ulong* instanceId)
     {
+        using var call = new RuntimeCall();
         try
         {
             if (desc is null || instanceId is null ||
@@ -333,6 +340,7 @@ public static unsafe class Bootstrap
                 desc->World.ToNativeObject(),
                 desc->OwnerComponent.ToNativeObject());
             script.__Attach(in ownerContext);
+            script.__EnableUpdateDispatch(type.Lifecycle.ContainsKey(ScriptLifecycleMethod.Update));
 
             ulong id = checked((ulong)Interlocked.Increment(ref s_nextInstance));
             lock (Sync)
@@ -359,6 +367,7 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus DestroyInstanceExport(ulong instanceId)
     {
+        using var call = new RuntimeCall();
         try
         {
             Instance instance;
@@ -387,7 +396,9 @@ public static unsafe class Bootstrap
         uint argumentCount,
         CSharpValue* result)
     {
+        using var call = new RuntimeCall();
         Instance? diagnosticInstance = null;
+        bool invokingUpdate = false;
         string lifecycleName = methodId <= (ulong)ScriptLifecycleMethod.Update
             ? ((ScriptLifecycleMethod)methodId).ToString()
             : $"unknown lifecycle method {methodId}";
@@ -430,6 +441,22 @@ public static unsafe class Bootstrap
 
             using ScriptExecutionContext.Scope scope =
                 ScriptExecutionContext.Enter(instance.Script.World);
+            if ((ScriptLifecycleMethod)methodId == ScriptLifecycleMethod.OnActivated)
+                instance.FailedUpdateMvid = null;
+            if ((ScriptLifecycleMethod)methodId == ScriptLifecycleMethod.Update)
+            {
+                lock (Sync)
+                {
+                    Guid revision = Generations[instance.GenerationId].CurrentMvid;
+                    if (instance.FailedUpdateMvid == revision)
+                    {
+                        *result = default;
+                        return CSharpStatus.Success;
+                    }
+                }
+                invokingUpdate = true;
+                instance.Script.__DrainPostedActions();
+            }
             invoke(instance.Script, deltaTime);
             *result = default;
             return CSharpStatus.Success;
@@ -446,6 +473,12 @@ public static unsafe class Bootstrap
         }
         catch (Exception exception)
         {
+            if (invokingUpdate && diagnosticInstance is not null)
+            {
+                lock (Sync)
+                    diagnosticInstance.FailedUpdateMvid = Generations[diagnosticInstance.GenerationId].CurrentMvid;
+                exception.Data["Plasma.UpdatePaused"] = "Update paused for this instance until successful code reload, reactivation, or an exposed parameter change.";
+            }
             return Fail(
                 CSharpStatus.ManagedException,
                 FormatScriptException(
@@ -459,6 +492,7 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus GetFieldExport(ulong instanceId, ulong fieldId, CSharpValue* value)
     {
+        using var call = new RuntimeCall();
         Instance? diagnosticInstance = null;
         try
         {
@@ -506,6 +540,7 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus SetFieldExport(ulong instanceId, ulong fieldId, CSharpValue* value)
     {
+        using var call = new RuntimeCall();
         Instance? diagnosticInstance = null;
         try
         {
@@ -527,6 +562,7 @@ public static unsafe class Bootstrap
             }
 
             field.Set(instance.Script, ConvertFromValue(*value, field.ValueType));
+            instance.FailedUpdateMvid = null;
             return CSharpStatus.Success;
         }
         catch (InvalidValueException exception)
@@ -554,6 +590,7 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus DispatchMessageExport(ulong instanceId, ulong messageId, CSharpValue* payload)
     {
+        using var call = new RuntimeCall();
         Instance? diagnosticInstance = null;
         try
         {
@@ -684,6 +721,26 @@ public static unsafe class Bootstrap
         }
 
         *api = null;
+        if (Decode(name) == "Plasma.ImmutableGenerations" && minimumVersion <= 1)
+        {
+            *api = GetGenerationApi();
+            return CSharpStatus.Success;
+        }
+        if (Decode(name) == "Plasma.Generation" && minimumVersion <= 1)
+        {
+            *api = GetGenerationApi();
+            return CSharpStatus.Success;
+        }
+        if (Decode(name) == "Plasma.ReloadState" && minimumVersion <= 1)
+        {
+            *api = GetReloadStateApi();
+            return CSharpStatus.Success;
+        }
+        if (Decode(name) == "Plasma.HotReload" && minimumVersion <= 1)
+        {
+            *api = GetHotReloadApi();
+            return CSharpStatus.Success;
+        }
 
         if (Decode(name) == "Plasma.Console" && minimumVersion <= 1)
         {
@@ -721,6 +778,7 @@ public static unsafe class Bootstrap
     private static CSharpStatus InvokeConsoleCommandExport(
         ulong generationId, ulong commandId, CSharpValue* arguments, uint argumentCount)
     {
+        using var call = new RuntimeCall();
         try
         {
             if (arguments is null && argumentCount != 0)
@@ -775,6 +833,7 @@ public static unsafe class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus DrawConsoleToolExport(ulong generationId, ulong toolId)
     {
+        using var call = new RuntimeCall();
         try
         {
             ConsoleTool tool;
@@ -981,7 +1040,8 @@ public static unsafe class Bootstrap
         }
 
         ComponentScript script = instance.Script;
-        return $"{operation} failed.{sourceLocation} " +
+        string recovery = exception.Data["Plasma.UpdatePaused"] is string paused ? $" {paused}" : string.Empty;
+        return $"{operation} failed.{sourceLocation}{recovery} " +
                $"Generation=0x{instance.GenerationId:X16}; " +
                $"ManagedType='{instance.Type.ManagedName}'; " +
                $"Instance=0x{instance.Id:X16}; " +
@@ -1683,6 +1743,13 @@ public static unsafe class Bootstrap
         }
 
         public ulong Id { get; }
+        public Assembly? Assembly { get; set; }
+        public Guid BaseMvid { get; set; }
+        public Guid CurrentMvid { get; set; }
+        public int DeltaSequence { get; set; }
+        public List<string> AppliedDeltaHashes { get; } = [];
+        public string DependencyFingerprint { get; set; } = string.Empty;
+        public bool UpdateFailed { get; set; }
         public GenerationLoadContext LoadContext { get; private set; }
         public string ShadowDirectory { get; }
         public Dictionary<ulong, ScriptTypeDescriptor> Types { get; private set; }
@@ -1709,6 +1776,7 @@ public static unsafe class Bootstrap
             }
 
             Types = [];
+            Assembly = null;
             Commands = [];
             Tools = [];
             Manifest = [];
@@ -1721,7 +1789,10 @@ public static unsafe class Bootstrap
         ulong Id,
         ulong GenerationId,
         ScriptTypeDescriptor Type,
-        ComponentScript Script);
+        ComponentScript Script)
+    {
+        public Guid? FailedUpdateMvid { get; set; }
+    }
 
     private sealed record UnloadTicket(
         WeakReference ContextReference,

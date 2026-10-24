@@ -98,10 +98,14 @@ $inventory = Get-ChildItem -LiteralPath $destination -Recurse -File |
   Where-Object { $_.FullName -ne $inventoryFile } |
   Sort-Object FullName |
   ForEach-Object {
+    $runtimeHashAlgorithm = [System.Security.Cryptography.SHA256]::Create()
+    $runtimeHashStream = [System.IO.File]::OpenRead($_.FullName)
+    try { $runtimeHash = [System.BitConverter]::ToString($runtimeHashAlgorithm.ComputeHash($runtimeHashStream)).Replace('-', '') }
+    finally { $runtimeHashStream.Dispose(); $runtimeHashAlgorithm.Dispose() }
     [pscustomobject]@{
       path = $_.FullName.Substring($destinationPrefix.Length).Replace("\", "/")
       bytes = $_.Length
-      sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+      sha256 = $runtimeHash
     }
   }
 

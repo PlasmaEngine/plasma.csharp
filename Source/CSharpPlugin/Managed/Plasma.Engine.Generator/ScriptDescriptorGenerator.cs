@@ -368,6 +368,19 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         }
 
         var messages = new List<MessageModel>();
+        var fieldNames = new HashSet<string>(fields.Select(static field => field.Name), StringComparer.Ordinal);
+        foreach (FieldModel field in fields)
+        {
+            foreach (KeyValuePair<string, string> alias in field.Metadata.Where(static pair => pair.Key.StartsWith("FormerName.", StringComparison.Ordinal)))
+            {
+                if (string.IsNullOrWhiteSpace(alias.Value) || !fieldNames.Add(alias.Value))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidExposedMember, location, script.Name, field.Name,
+                        $"former name '{alias.Value}' is empty or conflicts with another exposed member or former name"));
+                    valid = false;
+                }
+            }
+        }
         var handledMessages = new HashSet<string>(StringComparer.Ordinal);
         foreach (IMethodSymbol method in script.GetMembers()
                      .OfType<IMethodSymbol>()
@@ -614,6 +627,7 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
     private static IReadOnlyDictionary<string, string> GetEditorMetadata(ISymbol member)
     {
         var values = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        int formerNameIndex = 0;
         foreach (AttributeData attribute in member.GetAttributes())
         {
             string? attributeName = attribute.AttributeClass?.ToDisplayString();
@@ -636,9 +650,55 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             {
                 values["DisplayName"] = displayName;
             }
+            else if (attributeName == "Plasma.TooltipAttribute" &&
+                     attribute.ConstructorArguments.FirstOrDefault().Value is string tooltip)
+            {
+                values["Tooltip"] = tooltip;
+            }
+            else if (attributeName == "Plasma.AssetAttribute" &&
+                     attribute.ConstructorArguments.FirstOrDefault().Value is string assetType)
+            {
+                values["Asset"] = assetType.StartsWith("CompatibleAsset_", StringComparison.Ordinal)
+                    ? assetType
+                    : "CompatibleAsset_" + assetType;
+            }
+            else if (attributeName == "Plasma.FormerlySerializedAsAttribute" &&
+                     attribute.ConstructorArguments.FirstOrDefault().Value is string formerName)
+            {
+                values[$"FormerName.{formerNameIndex++}"] = formerName;
+            }
+        }
+
+        if (!values.ContainsKey("Tooltip") && GetDocumentationSummary(member) is { Length: > 0 } summary)
+            values["Tooltip"] = summary;
+
+        ITypeSymbol? valueType = member is IFieldSymbol field ? field.Type : (member as IPropertySymbol)?.Type;
+        if (valueType is INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType)
+        {
+            values["Enum.Flags"] = FindAttribute(enumType, "System.FlagsAttribute") is not null ? "true" : "false";
+            foreach (IFieldSymbol enumMember in enumType.GetMembers().OfType<IFieldSymbol>().Where(static field => field.HasConstantValue))
+                values[$"Enum.Value.{enumMember.Name}"] = Convert.ToString(enumMember.ConstantValue, CultureInfo.InvariantCulture) ?? "0";
         }
 
         return values;
+    }
+
+    /// <summary>The member's XML summary as one line, or null when the compilation keeps no doc comments.</summary>
+    private static string? GetDocumentationSummary(ISymbol member)
+    {
+        string? xml = member.GetDocumentationCommentXml();
+        if (string.IsNullOrWhiteSpace(xml))
+            return null;
+
+        try
+        {
+            string? text = System.Xml.Linq.XElement.Parse(xml).Element("summary")?.Value;
+            return text is null ? null : string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
     }
 
     private static AttributeData? FindAttribute(ISymbol symbol, string metadataName) =>

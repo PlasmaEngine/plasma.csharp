@@ -49,6 +49,30 @@ public sealed class DisplayNameAttribute(string name) : Attribute
     public string Name { get; } = name;
 }
 
+/// <summary>Sets the editor tooltip of an exposed value. Without it the member's XML summary is used.</summary>
+[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
+public sealed class TooltipAttribute(string text) : Attribute
+{
+    public string Text { get; } = text;
+}
+
+/// <summary>Makes an exposed string an asset picker, e.g. <c>[Asset("Prefab")]</c>.
+/// Picked assets are packaged with the scene that uses them.</summary>
+[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
+public sealed class AssetAttribute(string assetType) : Attribute
+{
+    public string AssetType { get; } = assetType;
+}
+
+/// <summary>Maps an older inspector parameter name to this exposed member during load and reload.
+/// Keep this attribute while scenes or prefabs still contain the old name. It does not rewrite
+/// application-owned JSON or other custom save formats.</summary>
+[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = true, Inherited = true)]
+public sealed class FormerlySerializedAsAttribute(string name) : Attribute
+{
+    public string Name { get; } = name;
+}
+
 /// <summary>Marks a value type emitted from a reflected native message descriptor.</summary>
 [AttributeUsage(AttributeTargets.Struct, Inherited = false)]
 [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]

@@ -13,6 +13,7 @@
 #include <Foundation/Threading/AtomicInteger.h>
 #include <Foundation/Threading/Lock.h>
 #include <Foundation/Threading/Mutex.h>
+#include <Foundation/System/Process.h>
 #include <Foundation/Utilities/AssetFileHeader.h>
 #include <Foundation/Utilities/ConversionUtils.h>
 
@@ -30,6 +31,7 @@ namespace
   constexpr plUInt64 s_uiMaxEmbeddedProjectSize = 512ull * 1024ull * 1024ull;
   constexpr plUInt64 s_uiMaxContainerSize = 512ull * 1024ull * 1024ull;
   static plMutex s_CSharpProjectLoadMutex;
+  static plHashTable<plString, bool> s_ExtractedProjects;
   static plAtomicBool s_bBindingSurfaceWarningLogged = false;
 
   static plResult ReadUInt16(plStreamReader& stream, plUInt16& out_uiValue)
@@ -92,7 +94,7 @@ namespace
   }
 
   static plResult ExtractEmbeddedFile(plStreamReader& stream,
-    plStringView sExtractionRoot, plStringView sRelativePath, plUInt64 uiByteCount)
+    plStringView sExtractionRoot, plStringView sRelativePath, plUInt64 uiByteCount, bool bReuse)
   {
     if (uiByteCount > s_uiMaxEmbeddedFileSize ||
         uiByteCount > plMath::MaxValue<plUInt32>())
@@ -109,6 +111,8 @@ namespace
     sTarget.MakeCleanPath();
     if (!plPathUtils::IsSubPath(sExtractionRoot, sTarget))
       return PL_FAILURE;
+    if (bReuse && plOSFile::ExistsFile(sTarget))
+      return stream.SkipBytes(uiByteCount) == uiByteCount ? PL_SUCCESS : PL_FAILURE;
 
     if (plOSFile::CreateDirectoryStructure(
           plPathUtils::GetFileDirectory(sTarget))
@@ -321,6 +325,9 @@ PL_BEGIN_SUBSYSTEM_DECLARATION(CSharpPlugin, CSharpClassResource)
   {
     plResourceManager::UnregisterResourceOverrideType(
       plGetStaticRTTI<plCSharpClassResource>());
+    PL_LOCK(s_CSharpProjectLoadMutex);
+    s_ExtractedProjects.Clear();
+    s_ExtractedProjects.Compact();
   }
 
 PL_END_SUBSYSTEM_DECLARATION;
@@ -332,6 +339,12 @@ plCSharpClassResource::~plCSharpClassResource() = default;
 plResourceLoadDesc plCSharpClassResource::UnloadData(Unload WhatToUnload)
 {
   PL_IGNORE_UNUSED(WhatToUnload);
+
+  if (m_pClassData != nullptr)
+  {
+    m_pUnloadedClassData = m_pClassData;
+    m_pUnloadedType = GetType();
+  }
 
   DeleteScriptType();
   m_pClassData = nullptr;
@@ -417,10 +430,14 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
     "{0}", plArgU(assetHeader.GetFileHash(), 16, true, 16, true));
   plStringBuilder sExtractionRoot =
     plOSFile::GetTempDataFolder("PlasmaEngine/CSharp/Projects");
+  plStringBuilder sProcessFolder;
+  sProcessFolder.SetFormat("{}", plProcess::GetCurrentProcessID());
+  sExtractionRoot.AppendPath(sProcessFolder);
   sExtractionRoot.AppendPath(sHashFolder);
   sExtractionRoot.MakeCleanPath();
   if (plOSFile::CreateDirectoryStructure(sExtractionRoot).Failed())
     return result;
+  const bool bReuseExtraction = s_ExtractedProjects.Contains(sExtractionRoot);
 
   plUInt32 uiFileCount = 0;
   if (ReadUInt32(*pStream, uiFileCount).Failed())
@@ -443,7 +460,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
     uiEmbeddedProjectSize += uiByteCount;
 
     if (ExtractEmbeddedFile(
-          *pStream, sExtractionRoot, sRelativePath, uiByteCount)
+          *pStream, sExtractionRoot, sRelativePath, uiByteCount, bReuseExtraction)
           .Failed())
     {
       plLog::Error(
@@ -552,6 +569,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         return result;
       if (uiMetadataCount > s_uiMaxFieldEntries)
         return result;
+      plDynamicArray<plHashedString> formerNames;
       for (plUInt32 metadataIndex = 0;
         metadataIndex < uiMetadataCount; ++metadataIndex)
       {
@@ -562,6 +580,8 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         {
           return result;
         }
+        if (bSelected && sKey.StartsWith("FormerName.") && !sValue.IsEmpty())
+          formerNames.ExpandAndGetRef().Assign(sValue);
       }
 
       if (bSelected)
@@ -575,6 +595,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         }
         field.m_sName.Assign(sFieldName);
         field.m_sManagedType = sManagedType;
+        field.m_FormerNames = std::move(formerNames);
       }
     }
   }
@@ -586,6 +607,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
       requestedSubAsset, sAbsoluteContainerPath);
     return result;
   }
+  s_ExtractedProjects.Insert(sExtractionRoot, true);
 
   // The managed loader recursively copies the assembly directory. Keep its destination
   // outside that source tree, otherwise the copy would discover its own output.
@@ -595,10 +617,16 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
 
   plCSharpGenerationLease lease;
   plString sDescriptorJson;
-  if (plCSharpProjectRuntime::GetSingleton()
-        .AcquireGeneration(
-          sAssemblyPath, sShadowCopyRoot, lease, sDescriptorJson)
-        .Failed())
+  const plResult acquired = plCSharpProjectRuntime::GetSingleton().AcquireGeneration(sAssemblyPath, sShadowCopyRoot, lease, sDescriptorJson);
+
+  // The reload report names why this load went in place, fully, or not at all.
+  {
+    plString sCode, sReason;
+    plCSharpProjectRuntime::GetSingleton().GetLastOutcome(sCode, sReason);
+    SetReloadInfo("C#", sCode, sReason, acquired.Failed());
+  }
+
+  if (acquired.Failed())
   {
     return result;
   }
@@ -621,15 +649,28 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
     pClassData->m_sManagedName,
     pGeneration->GetGeneration());
 
-  DeleteScriptType();
+  // The class of the previous load: still loaded, or set aside by the unload that started this reload.
+  plSharedPtr<const plCSharpClassData> pPreviousClass = m_pClassData != nullptr ? m_pClassData : m_pUnloadedClassData;
+  plSharedPtr<plScriptRTTI> pPreviousType = GetType() != nullptr ? GetType() : m_pUnloadedType;
+  m_pUnloadedClassData = nullptr;
+  m_pUnloadedType = nullptr;
+
+  const bool bRetainRuntimeType = pPreviousClass != nullptr && pPreviousType != nullptr &&
+                                 pPreviousClass->m_uiTypeId == pClassData->m_uiTypeId &&
+                                 pPreviousClass->m_pGeneration->GetGeneration() == pGeneration->GetGeneration();
+  if (bRetainRuntimeType)
+    m_pType = pPreviousType;
+  else
+    DeleteScriptType();
   m_pClassData = pClassData;
   // Lifecycle entry points are declared on plComponent. CreateScriptType uses the
   // supplied base type's reflected functions to map the sparse backend function
   // list into plComponent_ScriptBaseClassFunctions slots, so passing
   // plScriptComponent here would silently discard Initialize,
   // OnSimulationStarted, Update, and the other lifecycle methods.
-  CreateScriptType(sRuntimeTypeName, plGetStaticRTTI<plComponent>(),
-    std::move(functions), std::move(messageHandlers));
+  if (!bRetainRuntimeType)
+    CreateScriptType(sRuntimeTypeName, plGetStaticRTTI<plComponent>(),
+      std::move(functions), std::move(messageHandlers));
 
   result.m_State = plResourceState::Loaded;
   return result;

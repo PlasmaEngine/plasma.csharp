@@ -29,6 +29,10 @@ public:
     plCSharpGenerationLease& out_lease, plString& out_sDescriptorJson);
   void ReleaseGeneration(plCSharpGenerationLease& inout_lease);
 
+  /// Why the last AcquireGeneration went the way it did: a reason code ("C-INPLACE", "C-FIELDS", ...) and a sentence,
+  /// for the reload reports.
+  void GetLastOutcome(plString& out_sCode, plString& out_sReason) const;
+
   const plCSharpManagedApiV1* GetManagedApi() const;
 
 private:
@@ -39,7 +43,11 @@ private:
     plString m_sDescriptorJson;
   };
 
+  void SetOutcome(plStringView sCodeAndReason);
+
   mutable plMutex m_Mutex;
   plHashTable<plString, Generation> m_Generations;
   plUInt32 m_uiIncompleteUnloadCount = 0;
+  plHybridString<32, plStaticsAllocatorWrapper> m_sLastCode;    ///< statics allocator: the runtime outlives the leak check
+  plHybridString<160, plStaticsAllocatorWrapper> m_sLastReason;
 };

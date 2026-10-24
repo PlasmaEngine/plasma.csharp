@@ -35,6 +35,10 @@ private:
   virtual bool GeneratesProfileSpecificAssets() const override { return false; }
 
   plAssetDocumentTypeDescriptor m_DocTypeDesc;
+
+  /// The type of the class sub-assets. No file has it; it exists so asset fields and pickers that ask for a script class
+  /// accept the classes inside a project.
+  plAssetDocumentTypeDescriptor m_ClassTypeDesc;
 };
 
 /// \brief Source-backed C# asset type. Creation writes a .cs file; opening delegates to the managed project.

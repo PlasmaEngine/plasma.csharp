@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup Condition="'$(Configuration)' == 'Development'">
+    <Optimize>false</Optimize>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+</Project>

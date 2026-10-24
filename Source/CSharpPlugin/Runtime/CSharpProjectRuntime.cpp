@@ -18,27 +18,49 @@ namespace
     return span;
   }
 
-  /// Fingerprints an assembly's contents. Roslyn builds deterministically, so unchanged sources
-  /// produce the same bytes and therefore the same key.
+  /// Fingerprints the entry assembly and its managed/native dependency closure. Symbols do not
+  /// affect execution, but changed helpers and runtime configuration must invalidate reuse.
   static plResult HashAssemblyContents(plStringView sAssemblyPath, plStringBuilder& out_sKey)
   {
     out_sKey.Clear();
-
-    plOSFile file;
-    if (file.Open(sAssemblyPath, plFileOpenMode::Read).Failed())
-      return PL_FAILURE;
 
     plUInt64 uiHash = 0x9E3779B97F4A7C15ULL;
     plDynamicArray<plUInt8> buffer;
     buffer.SetCountUninitialized(64 * 1024);
 
-    while (true)
+    plStringBuilder directory = sAssemblyPath;
+    directory.PathParentDirectory();
+    plDynamicArray<plString> dependencies;
+    plFileSystemIterator iterator;
+    for (iterator.StartSearch(directory, plFileSystemIteratorFlags::ReportFilesRecursive); iterator.IsValid(); iterator.Next())
     {
-      const plUInt64 uiRead = file.Read(buffer.GetData(), buffer.GetCount());
-      if (uiRead == 0)
-        break;
-
-      uiHash = plHashingUtils::xxHash64(buffer.GetData(), static_cast<size_t>(uiRead), uiHash);
+      plStringBuilder path = iterator.GetCurrentPath();
+      path.AppendPath(iterator.GetStats().m_sName);
+      if (path.HasExtension("dll") || path.HasExtension("json"))
+        dependencies.PushBack(path);
+    }
+    dependencies.Sort();
+    if (dependencies.IsEmpty() || !plOSFile::ExistsFile(sAssemblyPath))
+      return PL_FAILURE;
+    for (const plString& dependency : dependencies)
+    {
+      plStringBuilder relative = dependency;
+      PL_SUCCEED_OR_RETURN(relative.MakeRelativeTo(directory));
+      relative.ReplaceAll("\\", "/");
+      const plUInt32 length = relative.GetElementCount();
+      uiHash = plHashingUtils::xxHash64(&length, sizeof(length), uiHash);
+      uiHash = plHashingUtils::xxHash64(relative.GetData(), length, uiHash);
+      plOSFile file;
+      PL_SUCCEED_OR_RETURN(file.Open(dependency, plFileOpenMode::Read));
+      const plUInt64 size = file.GetFileSize();
+      uiHash = plHashingUtils::xxHash64(&size, sizeof(size), uiHash);
+      while (true)
+      {
+        const plUInt64 uiRead = file.Read(buffer.GetData(), buffer.GetCount());
+        if (uiRead == 0)
+          break;
+        uiHash = plHashingUtils::xxHash64(buffer.GetData(), static_cast<size_t>(uiRead), uiHash);
+      }
     }
 
     out_sKey.SetFormat("{}", plArgU(uiHash, 16, true, 16, true));
@@ -87,6 +109,7 @@ plResult plCSharpProjectRuntime::AcquireGeneration(
   Generation* pExisting = nullptr;
   if (m_Generations.TryGetValue(generationKeyString, pExisting) && pExisting != nullptr)
   {
+    SetOutcome("C-SAME|The rebuild produced the same code; the running generation was kept.");
     ++pExisting->m_uiRefCount;
     out_lease.m_sGenerationKey = generationKeyString;
     out_lease.m_uiGeneration = pExisting->m_uiId;
@@ -94,19 +117,72 @@ plResult plCSharpProjectRuntime::AcquireGeneration(
     return PL_SUCCESS;
   }
 
+  plCSharpGenerationLoadDesc loadDesc;
+  loadDesc.m_AssemblyPath = MakeSpan(sAssemblyPath);
+  loadDesc.m_ShadowCopyRoot = MakeSpan(sShadowCopyRoot);
+  void* pExtension = nullptr;
+  if (pApi->m_QueryExtension(MakeSpan("Plasma.HotReload"), 1, &pExtension) == plCSharpStatus::Success && pExtension != nullptr)
+  {
+    const auto* pUpdates = static_cast<const plCSharpManagedHotReloadApiV1*>(pExtension);
+    plUInt64 uiUpdated = 0;
+    if (pUpdates->m_uiSize >= sizeof(plCSharpManagedHotReloadApiV1) && pUpdates->m_uiVersion == 1 &&
+        pUpdates->m_TryUpdate != nullptr && pUpdates->m_TryUpdate(&loadDesc, &uiUpdated) == plCSharpStatus::Success)
+    {
+      for (auto it = m_Generations.GetIterator(); it.IsValid(); ++it)
+      {
+        if (it.Value().m_uiId != uiUpdated)
+          continue;
+        Generation updated = it.Value();
+        ++updated.m_uiRefCount;
+        const plString previousKey = it.Key();
+        m_Generations.Remove(previousKey);
+        m_Generations.Insert(generationKeyString, updated);
+        out_lease.m_sGenerationKey = generationKeyString;
+        out_lease.m_uiGeneration = uiUpdated;
+        out_sDescriptorJson = updated.m_sDescriptorJson;
+        plLog::Success("C# generation {} updated in place; live script state retained.", uiUpdated);
+        SetOutcome("C-INPLACE|Only method bodies changed; applied as a metadata update. Constructors, field initializers and Initialize did not run.");
+        return PL_SUCCESS;
+      }
+    }
+
+    // The managed side names why it could not patch in place ("CODE|sentence").
+    SetOutcome("C-FULL|The full assembly was loaded.");
+    plCSharpBuffer error;
+    if (pApi->m_GetLastError != nullptr && pApi->m_FreeBuffer != nullptr && pApi->m_GetLastError(&error) == plCSharpStatus::Success && error.m_pData != nullptr)
+    {
+      const plStringView sError(static_cast<const char*>(error.m_pData), error.m_uiSize);
+      if (sError.StartsWith("C-"))
+        SetOutcome(sError);
+      pApi->m_FreeBuffer(&error);
+    }
+  }
+
   if (m_uiIncompleteUnloadCount >= 3)
   {
     plLog::Error(
       "C# scripting has three collectible generations that did not unload. "
       "Restart the editor engine before loading another script build.");
+    SetOutcome("C-STUCK|Three script generations did not unload; restart the engine process to load another build.");
     return PL_FAILURE;
   }
-
-  plCSharpGenerationLoadDesc loadDesc;
-  loadDesc.m_AssemblyPath = MakeSpan(sAssemblyPath);
-  loadDesc.m_ShadowCopyRoot = MakeSpan(sShadowCopyRoot);
+  pExtension = nullptr;
+  if (pApi->m_QueryExtension(MakeSpan("Plasma.Generation"), 1, &pExtension) == plCSharpStatus::Success && pExtension != nullptr)
+  {
+    const auto* pRetirement = static_cast<const plCSharpManagedGenerationApiV1*>(pExtension);
+    plUInt32 pending = 0, overdue = 0;
+    if (pRetirement->m_GetStatus(&pending, &overdue) == plCSharpStatus::Success && pending >= 16)
+    {
+      plLog::Error("C# reload is waiting for {} retired contexts ({} over one minute old). Retry after collection or restart the engine process.", pending, overdue);
+      SetOutcome("C-RETIRED|Sixteen retired script generations are waiting for collection; the reload was refused until they are collected or the engine process restarts.");
+      return PL_FAILURE;
+    }
+  }
 
   plUInt64 uiGeneration = 0;
+  pExtension = nullptr;
+  if (pApi->m_QueryExtension(MakeSpan("Plasma.ImmutableGenerations"), 1, &pExtension) == plCSharpStatus::Success)
+    loadDesc.m_uiFlags = 1; // The resource backend validated and extracted this process-local, immutable container.
   plCSharpStatus status = pApi->m_LoadGeneration(&loadDesc, &uiGeneration);
   if (status != plCSharpStatus::Success)
   {
@@ -152,6 +228,27 @@ plResult plCSharpProjectRuntime::AcquireGeneration(
   return PL_SUCCESS;
 }
 
+void plCSharpProjectRuntime::SetOutcome(plStringView sCodeAndReason)
+{
+  const char* szBar = sCodeAndReason.FindSubString("|");
+  if (szBar == nullptr)
+  {
+    m_sLastCode = sCodeAndReason;
+    m_sLastReason.Clear();
+    return;
+  }
+
+  m_sLastCode = plStringView(sCodeAndReason.GetStartPointer(), szBar);
+  m_sLastReason = plStringView(szBar + 1, sCodeAndReason.GetEndPointer());
+}
+
+void plCSharpProjectRuntime::GetLastOutcome(plString& out_sCode, plString& out_sReason) const
+{
+  PL_LOCK(m_Mutex);
+  out_sCode = m_sLastCode.GetView();
+  out_sReason = m_sLastReason.GetView();
+}
+
 void plCSharpProjectRuntime::ReleaseGeneration(plCSharpGenerationLease& inout_lease)
 {
   if (!inout_lease.IsValid())
@@ -162,11 +259,27 @@ void plCSharpProjectRuntime::ReleaseGeneration(plCSharpGenerationLease& inout_le
     PL_LOCK(m_Mutex);
 
     Generation* pGeneration = nullptr;
+    // An in-place update changes the content key while existing class resources still own
+    // leases to the preceding key. The generation id remains the ownership identity.
+    plString currentKey = inout_lease.m_sGenerationKey;
     if (!m_Generations.TryGetValue(inout_lease.m_sGenerationKey, pGeneration) ||
         pGeneration == nullptr || pGeneration->m_uiId != inout_lease.m_uiGeneration)
     {
-      inout_lease = {};
-      return;
+      pGeneration = nullptr;
+      for (auto it = m_Generations.GetIterator(); it.IsValid(); ++it)
+      {
+        if (it.Value().m_uiId == inout_lease.m_uiGeneration)
+        {
+          pGeneration = &it.Value();
+          currentKey = it.Key();
+          break;
+        }
+      }
+      if (pGeneration == nullptr)
+      {
+        inout_lease = {};
+        return;
+      }
     }
 
     if (--pGeneration->m_uiRefCount > 0)
@@ -176,7 +289,9 @@ void plCSharpProjectRuntime::ReleaseGeneration(plCSharpGenerationLease& inout_le
     }
 
     uiGeneration = pGeneration->m_uiId;
-    m_Generations.Remove(inout_lease.m_sGenerationKey);
+    m_Generations.Remove(currentKey);
+    if (m_Generations.IsEmpty())
+      m_Generations.Compact();
   }
 
   inout_lease = {};
@@ -189,6 +304,14 @@ void plCSharpProjectRuntime::ReleaseGeneration(plCSharpGenerationLease& inout_le
   const plCSharpManagedApiV1* pApi = GetManagedApi();
   if (pApi == nullptr)
     return;
+
+  void* pExtension = nullptr;
+  if (pApi->m_QueryExtension(MakeSpan("Plasma.Generation"), 1, &pExtension) == plCSharpStatus::Success && pExtension != nullptr)
+  {
+    const auto* pRetirement = static_cast<const plCSharpManagedGenerationApiV1*>(pExtension);
+    if (pRetirement->m_Retire(uiGeneration) == plCSharpStatus::Success)
+      return;
+  }
 
   plCSharpUnloadReport report;
   const plCSharpStatus status = pApi->m_UnloadGeneration(uiGeneration, &report);

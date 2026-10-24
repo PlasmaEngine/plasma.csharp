@@ -7,11 +7,13 @@ internal sealed class GenerationLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver;
     private readonly Assembly _sharedScriptCore = typeof(ComponentScript).Assembly;
+    private readonly string _directory;
 
     public GenerationLoadContext(string mainAssemblyPath)
         : base($"PlasmaScript-{Path.GetFileNameWithoutExtension(mainAssemblyPath)}", isCollectible: true)
     {
         _resolver = new AssemblyDependencyResolver(mainAssemblyPath);
+        _directory = Path.GetDirectoryName(mainAssemblyPath)!;
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
@@ -22,6 +24,11 @@ internal sealed class GenerationLoadContext : AssemblyLoadContext
         }
 
         string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
+        if (assemblyPath is null && assemblyName.Name == "Plasma.ProjectBindings")
+        {
+            string bindings = Path.Combine(_directory, "Plasma.ProjectBindings.dll");
+            if (File.Exists(bindings)) assemblyPath = bindings;
+        }
         return assemblyPath is null ? null : LoadFromAssemblyPath(assemblyPath);
     }
 

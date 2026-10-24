@@ -16,11 +16,18 @@ internal static class Program
         {
             ResolveScriptCoreFromPayload();
 
-            if (!TryReadArguments(args, out string assemblyPath, out string outputPath))
+            // "--test" runs the assembly's [PlasmaTest] methods instead of describing its scripts.
+            bool runTests = args.Length > 0 && args[0] == "--test";
+            if (!TryReadArguments(runTests ? args[1..] : args, out string assemblyPath, out string outputPath))
             {
                 Console.Error.WriteLine(
-                    "Usage: Plasma.ScriptInspector --assembly <absolute-path> --output <absolute-path>");
+                    "Usage: Plasma.ScriptInspector [--test] --assembly <absolute-path> --output <absolute-path>");
                 return 2;
+            }
+
+            if (runTests)
+            {
+                return TestRunner.Run(assemblyPath, outputPath, path => new InspectorLoadContext(path));
             }
 
             Inspect(assemblyPath, outputPath);
@@ -88,7 +95,7 @@ internal static class Program
             !string.IsNullOrWhiteSpace(outputPath);
     }
 
-    private static void Inspect(string assemblyPath, string outputPath)
+    internal static void Inspect(string assemblyPath, string outputPath)
     {
         string fullAssemblyPath = Path.GetFullPath(assemblyPath);
         var loadContext = new InspectorLoadContext(fullAssemblyPath);
@@ -342,11 +349,13 @@ internal static class Program
     private sealed class InspectorLoadContext : AssemblyLoadContext
     {
         private readonly AssemblyDependencyResolver _resolver;
+        private readonly string _directory;
 
         public InspectorLoadContext(string assemblyPath)
             : base($"Plasma.ScriptInspector:{assemblyPath}", isCollectible: true)
         {
             _resolver = new AssemblyDependencyResolver(assemblyPath);
+            _directory = Path.GetDirectoryName(assemblyPath)!;
         }
 
         protected override Assembly? Load(AssemblyName assemblyName)
@@ -358,6 +367,11 @@ internal static class Program
             }
 
             string? resolvedPath = _resolver.ResolveAssemblyToPath(assemblyName);
+            if (resolvedPath is null && assemblyName.Name == "Plasma.ProjectBindings")
+            {
+                string bindings = Path.Combine(_directory, "Plasma.ProjectBindings.dll");
+                if (File.Exists(bindings)) resolvedPath = bindings;
+            }
             return resolvedPath is null ? null : LoadFromAssemblyPath(resolvedPath);
         }
     }

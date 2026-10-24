@@ -11,7 +11,8 @@ public class EditorPluginCSharpModule : ModuleRules
         PlasmaPackageSdk.ConfigureEditorSdkConsumer(this, context);
         PlasmaPackageSdk.AddPackagePluginImport(this, context, "Source/CSharpPlugin", "plCSharpPlugin");
 
-        PlasmaPackageQt.ConfigureQtModule(this, context, "EditorPluginCSharpModule",
-            "Source/EditorPluginCSharp", "Core", "Gui", "Widgets");
+        // The build diagnostics view is engine-rendered (table, text views, tabs).
+        PlasmaPackageSdk.AddImportLibrary(this, context, "plEditorUi");
+        PlasmaPackageSdk.AddImportLibrary(this, context, "plGameUiPlugin");
     }
 }

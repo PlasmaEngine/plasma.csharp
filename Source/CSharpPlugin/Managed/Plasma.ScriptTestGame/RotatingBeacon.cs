@@ -18,7 +18,7 @@ public sealed class SetBeaconSpeed
 [PlasmaScript]
 public sealed partial class RotatingBeacon : ComponentScript
 {
-    [Expose, Range(0.0, 720.0), Category("Motion")]
+    [Expose, Range(0.0, 720.0), Category("Motion"), Tooltip("Turn rate in degrees per second.")]
     public float DegreesPerSecond { get; set; } = 90.0f;
 
     [Expose]

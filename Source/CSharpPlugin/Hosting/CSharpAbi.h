@@ -339,6 +339,30 @@ struct plCSharpManagedConsoleApiV1
   plCSharpStatus(PL_CSHARP_CALL* m_DrawTool)(plUInt64 uiGeneration, plUInt64 uiToolId) = nullptr;
 };
 
+/// Optional method-body updates. The base generation-loading ABI remains unchanged.
+struct plCSharpManagedHotReloadApiV1
+{
+  plUInt32 m_uiSize = sizeof(plCSharpManagedHotReloadApiV1);
+  plUInt32 m_uiVersion = 1;
+  plCSharpStatus(PL_CSHARP_CALL* m_TryUpdate)(const plCSharpGenerationLoadDesc* pDesc, plUInt64* out_pGeneration) = nullptr;
+};
+
+struct plCSharpManagedReloadStateApiV1
+{
+  plUInt32 m_uiSize = sizeof(plCSharpManagedReloadStateApiV1);
+  plUInt32 m_uiVersion = 1;
+  plCSharpStatus(PL_CSHARP_CALL* m_Capture)(plUInt64 uiInstance, plCSharpBuffer* out_pState) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_Restore)(plUInt64 uiInstance, plCSharpUtf8Span state) = nullptr;
+};
+
+struct plCSharpManagedGenerationApiV1
+{
+  plUInt32 m_uiSize = sizeof(plCSharpManagedGenerationApiV1);
+  plUInt32 m_uiVersion = 1;
+  plCSharpStatus(PL_CSHARP_CALL* m_Retire)(plUInt64 uiGeneration) = nullptr;
+  plCSharpStatus(PL_CSHARP_CALL* m_GetStatus)(plUInt32* out_pPending, plUInt32* out_pOverdue) = nullptr;
+};
+
 /// Managed operations exposed to the native script-resource backend.
 struct plCSharpManagedApiV1
 {
