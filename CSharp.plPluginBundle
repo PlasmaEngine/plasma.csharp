@@ -2,8 +2,8 @@ PluginInfo
 {
   string %DisplayName{"C#"}
   string %Category{"Scripting"}
-	string %MinEngineVersion{"0.12.0"}
-	string %MaxEngineVersion{"0.12.0"}
+	string %MinEngineVersion{"0.12.1"}
+	string %MaxEngineVersion{"0.12.1"}
   string %Description{"Adds hosted .NET 10 C# scripting support."}
   string %EditorPlugins{"plEditorPluginCSharp"}
   string %EditorEnginePlugins{}
