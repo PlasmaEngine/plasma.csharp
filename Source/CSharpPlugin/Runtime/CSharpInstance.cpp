@@ -390,6 +390,11 @@ plCSharpInstance::plCSharpInstance(plReflectedClass& inout_owner, plWorld* pWorl
 
 plCSharpInstance::~plCSharpInstance()
 {
+  for (CallFrame* pFrame = m_pCallFrame; pFrame != nullptr; pFrame = pFrame->m_pOuter)
+    pFrame->m_bDestroyed = true;
+
+  plCSharpExecutionScope::ForgetBorrowedHandles(&m_BorrowedHandles);
+
   if (m_uiInstance != 0)
   {
     if (const plCSharpManagedApiV1* pApi =
@@ -412,6 +417,17 @@ plCSharpInstance::~plCSharpInstance()
   registry.UnregisterObject(m_OwnerHandle);
 }
 
+void plCSharpInstance::EnterCall(CallFrame& frame)
+{
+  frame.m_pOuter = m_pCallFrame;
+  m_pCallFrame = &frame;
+}
+
+void plCSharpInstance::LeaveCall(CallFrame& frame)
+{
+  m_pCallFrame = frame.m_pOuter;
+}
+
 plResult plCSharpInstance::InvokeLifecycle(plUInt64 uiMethodId, plTime deltaTime)
 {
   const plCSharpManagedApiV1* pApi = plCSharpProjectRuntime::GetSingleton().GetManagedApi();
@@ -429,10 +445,20 @@ plResult plCSharpInstance::InvokeLifecycle(plUInt64 uiMethodId, plTime deltaTime
   }
 
   plCSharpValue result;
-  plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
-  const plCSharpStatus status =
-    pApi->m_InvokeMethod(m_uiInstance, uiMethodId, pArguments, uiArgumentCount, &result);
+  CallFrame frame;
+  plCSharpStatus status = plCSharpStatus::Success;
+  {
+    plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
+    EnterCall(frame);
+    status = pApi->m_InvokeMethod(m_uiInstance, uiMethodId, pArguments, uiArgumentCount, &result);
+  }
   pApi->m_ReleaseValue(&result);
+
+  // The script deleted its own component: this instance no longer exists.
+  if (frame.m_bDestroyed)
+    return PL_SUCCESS;
+
+  LeaveCall(frame);
 
   // Lifecycle overrides are optional. Full-reload preparation must also work for scripts
   // that have no Initialize override, matching normal ScriptRTTI dispatch.
@@ -484,9 +510,19 @@ plResult plCSharpInstance::DispatchMessage(
   payload.m_uiPayload0 = reinterpret_cast<plUInt64>(sPayloadJson.GetStartPointer());
   payload.m_uiPayload1 = sPayloadJson.GetElementCount();
 
-  plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
-  const plCSharpStatus status =
-    pApi->m_DispatchMessage(m_uiInstance, uiMessageHandlerId, &payload);
+  CallFrame frame;
+  plCSharpStatus status = plCSharpStatus::Success;
+  {
+    plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
+    EnterCall(frame);
+    status = pApi->m_DispatchMessage(m_uiInstance, uiMessageHandlerId, &payload);
+  }
+
+  if (frame.m_bDestroyed)
+    return PL_SUCCESS;
+
+  LeaveCall(frame);
+
   if (status != plCSharpStatus::Success)
   {
     if (plCSharpHost* pHost = plCSharpHost::GetSingleton())
@@ -509,9 +545,19 @@ plResult plCSharpInstance::DispatchManagedMessage(
   payload.m_Kind = plCSharpValueKind::UInt64;
   payload.m_uiPayload0 = uiPayloadToken;
 
-  plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
-  const plCSharpStatus status =
-    pApi->m_DispatchMessage(m_uiInstance, uiMessageId, &payload);
+  CallFrame frame;
+  plCSharpStatus status = plCSharpStatus::Success;
+  {
+    plCSharpExecutionScope scope(GetWorld(), &m_BorrowedHandles);
+    EnterCall(frame);
+    status = pApi->m_DispatchMessage(m_uiInstance, uiMessageId, &payload);
+  }
+
+  if (frame.m_bDestroyed)
+    return PL_SUCCESS;
+
+  LeaveCall(frame);
+
   if (status != plCSharpStatus::Success)
   {
     if (plCSharpHost* pHost = plCSharpHost::GetSingleton())

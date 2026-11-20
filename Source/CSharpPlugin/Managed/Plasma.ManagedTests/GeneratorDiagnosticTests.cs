@@ -25,6 +25,41 @@ public sealed class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void ExposesFieldsDeclaredOnABaseClass()
+    {
+        string generated = RunGenerator("""
+            using Plasma;
+            public abstract class EnemyBase : ComponentScript
+            {
+                [Expose] public float Health = 100;
+            }
+            [PlasmaScript] public sealed partial class Grunt : EnemyBase
+            {
+                [Expose] public float Speed = 4;
+            }
+            """);
+        Assert.Contains("\"Health\"", generated);
+        Assert.Contains("\"Speed\"", generated);
+    }
+
+    [Fact]
+    public void ReportsAPrivateMessageHandlerOnABaseClass()
+    {
+        var compilation = CreateCompilation("""
+            using Plasma;
+            [PlasmaMessage] public sealed class Ping { }
+            public abstract class EnemyBase : ComponentScript
+            {
+                [MessageHandler] private void OnPing(Ping message) { }
+            }
+            [PlasmaScript] public sealed partial class Grunt : EnemyBase { }
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ScriptDescriptorGenerator());
+        driver = driver.RunGenerators(compilation);
+        Assert.Contains(driver.GetRunResult().Diagnostics, diagnostic => diagnostic.Id == "PLCS007");
+    }
+
+    [Fact]
     public void RejectsAmbiguousFormerNames()
     {
         var compilation = CreateCompilation("""

@@ -46,6 +46,23 @@ public enum NativeValueFlags : uint
     ObjectKindComponent = 3u << 8,
     ObjectKindResource = 4u << 8,
     ObjectKindReflectedObject = 5u << 8,
+    ByteSpanTypeMask = 0xFFu << 16,
+}
+
+/// <summary>Value type held by a byte-span value, in bits 16..23 of its flags. Untyped (variant)
+/// engine slots decode the bytes by this tag.</summary>
+public enum NativeByteSpanType : uint
+{
+    None = 0,
+    Time,
+    Angle,
+    Vec2,
+    Vec2U32,
+    Vec3,
+    Vec4,
+    Quat,
+    Color,
+    Transform,
 }
 
 /// <summary>Fixed-layout value used by generated wrappers to call reflected native functions.</summary>

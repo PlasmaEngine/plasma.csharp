@@ -158,20 +158,37 @@ public static unsafe partial class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus ShutdownExport()
     {
+        CSharpStatus result = CSharpStatus.Success;
         try
         {
             ulong[] generationIds = DetachAllInstancesForShutdown();
 
-            CSharpStatus result = CSharpStatus.Success;
+            // Every generation gets its unload attempt; one failure does not skip the rest.
             foreach (ulong generationId in generationIds)
             {
-                CSharpStatus unloadStatus = UnloadGenerationCore(generationId, out _);
+                CSharpStatus unloadStatus;
+                try
+                {
+                    unloadStatus = UnloadGenerationCore(generationId, out _);
+                }
+                catch (Exception exception)
+                {
+                    unloadStatus = Fail(CSharpStatus.ManagedException, exception);
+                }
+
                 if (unloadStatus != CSharpStatus.Success)
                 {
                     result = unloadStatus;
                 }
             }
-
+        }
+        catch (Exception exception)
+        {
+            result = Fail(CSharpStatus.ManagedException, exception);
+        }
+        finally
+        {
+            // The native side tears down its tables after this call, so the bridge must be reset regardless.
             lock (Sync)
             {
                 s_initialized = false;
@@ -179,13 +196,9 @@ public static unsafe partial class Bootstrap
                 s_nativeApi = default;
                 s_nativeM0Probe = null;
             }
+        }
 
-            return result;
-        }
-        catch (Exception exception)
-        {
-            return Fail(CSharpStatus.ManagedException, exception);
-        }
+        return result;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -202,7 +215,14 @@ public static unsafe partial class Bootstrap
 
         foreach (Instance instance in instances)
         {
-            instance.Script.__Detach();
+            try
+            {
+                instance.Script.__Detach();
+            }
+            catch (Exception exception)
+            {
+                Log(CSharpLogLevel.Warning, $"Detaching C# script '{instance.Script.GetType().FullName}' at shutdown failed: {exception.Message}");
+            }
         }
 
         return generationIds;
@@ -1708,16 +1728,20 @@ public static unsafe partial class Bootstrap
         }
     }
 
-    private static void TryDeleteDirectory(string path)
+    // Immutable generations load in place and have no shadow directory, so an empty path is normal here.
+    // Callers include the retirement timer, where an escaping exception would end the process.
+    internal static void TryDeleteDirectory(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
         try
         {
             Directory.Delete(path, recursive: true);
         }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
         }
     }

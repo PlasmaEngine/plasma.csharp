@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -227,6 +228,115 @@ public sealed unsafe class ManagedHostAbiTests
         {
             Assert.Equal(CSharpStatus.Success, managedApi.Shutdown());
         }
+    }
+
+    /// <summary>Mirrors the managed host's "Plasma.Generation" extension table.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GenerationApiV1
+    {
+        public uint Size, Version;
+        public delegate* unmanaged[Cdecl]<ulong, CSharpStatus> Retire;
+        public delegate* unmanaged[Cdecl]<uint*, uint*, CSharpStatus> GetStatus;
+    }
+
+    // The engine loads every generation immutable (no shadow copy), so this is the path a game takes.
+    // Retired contexts are collected by a timer thread, where an escaping exception ends the process.
+    [Fact]
+    public void ImmutableGenerationsUnloadAndRetireWithoutAShadowDirectory()
+    {
+        var nativeApi = new NativeApiV1
+        {
+            Size = (uint)sizeof(NativeApiV1),
+            Version = 1,
+            PointerSize = (uint)sizeof(void*),
+            ValueLayoutVersion = 2,
+            Log = &NativeLog,
+            ValidateObject = &NativeValidateObject,
+            InvokeReflected = &NativeInvokeReflected,
+            ReleaseNativeValue = &NativeReleaseValue,
+            QueryExtension = &NativeQueryExtension,
+            M0Probe = &NativeM0Probe,
+        };
+        var managedApi = new ManagedApiV1
+        {
+            Size = (uint)sizeof(ManagedApiV1),
+            Version = 1,
+            PointerSize = (uint)sizeof(void*),
+            ValueLayoutVersion = 2,
+        };
+
+        delegate* unmanaged[Cdecl]<NativeApiV1*, ManagedApiV1*, CSharpStatus> initialize = &Bootstrap.Initialize;
+        Assert.Equal(CSharpStatus.Success, initialize(&nativeApi, &managedApi));
+
+        try
+        {
+            ulong unloaded = LoadImmutableGeneration(managedApi);
+            var report = new CSharpUnloadReport
+            {
+                Size = (uint)sizeof(CSharpUnloadReport),
+                Version = 1,
+            };
+            AssertSuccess(managedApi, managedApi.UnloadGeneration(unloaded, &report));
+
+            GenerationApiV1* retirement = QueryGenerationApi(managedApi);
+            ulong retired = LoadImmutableGeneration(managedApi);
+            AssertSuccess(managedApi, retirement->Retire(retired));
+
+            uint pending = 1;
+            uint overdue = 0;
+            for (Stopwatch watch = Stopwatch.StartNew(); pending != 0 && watch.Elapsed < TimeSpan.FromSeconds(30);)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Thread.Sleep(250);
+                Assert.Equal(CSharpStatus.Success, retirement->GetStatus(&pending, &overdue));
+            }
+
+            Assert.Equal(0u, pending);
+        }
+        finally
+        {
+            Assert.Equal(CSharpStatus.Success, managedApi.Shutdown());
+        }
+    }
+
+    private static ulong LoadImmutableGeneration(ManagedApiV1 api)
+    {
+        byte[] pathBytes = Encoding.UTF8.GetBytes(typeof(RotatingBeacon).Assembly.Location);
+        ulong generation = 0;
+        fixed (byte* path = pathBytes)
+        {
+            var load = new CSharpGenerationLoadDesc
+            {
+                Size = (uint)sizeof(CSharpGenerationLoadDesc),
+                Version = 1,
+                Flags = 1,
+                AssemblyPath = new CSharpUtf8Span
+                {
+                    Data = path,
+                    Length = checked((uint)pathBytes.Length),
+                },
+            };
+            AssertSuccess(api, api.LoadGeneration(&load, &generation));
+        }
+
+        return generation;
+    }
+
+    private static GenerationApiV1* QueryGenerationApi(ManagedApiV1 api)
+    {
+        byte[] nameBytes = Encoding.UTF8.GetBytes("Plasma.Generation");
+        void* extension = null;
+        fixed (byte* name = nameBytes)
+        {
+            Assert.Equal(CSharpStatus.Success, api.QueryExtension(
+                new CSharpUtf8Span { Data = name, Length = checked((uint)nameBytes.Length) },
+                1,
+                &extension));
+        }
+
+        Assert.True(extension is not null);
+        return (GenerationApiV1*)extension;
     }
 
     private static void CreateLiveInstanceForShutdown(ManagedApiV1 api)

@@ -67,6 +67,34 @@ enum class plCSharpValueFlags : plUInt32
   ObjectKindReflectedObject = 5u << 8,
 };
 
+/// Bits 16..23 of a ByteSpan value's flags name the value type it holds. An untyped (plVariant)
+/// slot has no expected type to size the bytes against, so it decodes them by this tag.
+enum class plCSharpByteSpanType : plUInt8
+{
+  None = 0,
+  Time,
+  Angle,
+  Vec2,
+  Vec2U32,
+  Vec3,
+  Vec4,
+  Quat,
+  Color,
+  Transform,
+};
+
+constexpr plUInt32 plCSharpByteSpanTypeShift = 16;
+
+inline plCSharpValueFlags plCSharpEncodeByteSpanType(plCSharpValueFlags flags, plCSharpByteSpanType type)
+{
+  return static_cast<plCSharpValueFlags>(static_cast<plUInt32>(flags) | (static_cast<plUInt32>(type) << plCSharpByteSpanTypeShift));
+}
+
+inline plCSharpByteSpanType plCSharpDecodeByteSpanType(plCSharpValueFlags flags)
+{
+  return static_cast<plCSharpByteSpanType>((static_cast<plUInt32>(flags) >> plCSharpByteSpanTypeShift) & 0xFFu);
+}
+
 struct plCSharpUtf8Span
 {
   const char* m_pData = nullptr;

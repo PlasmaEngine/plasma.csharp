@@ -5,9 +5,11 @@
 #include <Core/Scripting/ScriptAttributes.h>
 #include <Core/Scripting/ScriptCallScope.h>
 #include <Core/Scripting/ScriptComponent.h>
+#include <Foundation/Containers/HashSet.h>
 #include <Foundation/IO/JSONWriter.h>
 #include <Foundation/IO/MemoryStream.h>
 #include <Foundation/Reflection/ReflectionUtils.h>
+#include <Foundation/Threading/Mutex.h>
 
 namespace
 {
@@ -172,6 +174,16 @@ namespace
     }
   }
 
+  /// True the first time a property is seen, so a message sent every frame warns once, not every frame.
+  static bool ShouldReportUnsupportedProperty(const plAbstractProperty* pProperty)
+  {
+    static plMutex s_Mutex;
+    static plHashSet<const plAbstractProperty*> s_Reported;
+
+    PL_LOCK(s_Mutex);
+    return !s_Reported.Insert(pProperty);
+  }
+
   static plResult SerializeMessage(
     const plMessage& msg, plString& out_sJson)
   {
@@ -193,10 +205,10 @@ namespace
       plStringView sName = pProperty->GetPropertyName();
       sName.TrimWordStart("m_");
       const plVariant value = plReflectionUtils::GetMemberPropertyValue(pMember, &msg);
-      if (!WriteManagedJsonValue(writer, sName, value))
+      if (!WriteManagedJsonValue(writer, sName, value) && ShouldReportUnsupportedProperty(pProperty))
       {
         plLog::Warning(
-          "C# message property '{}.{}' has unsupported value type '{}'; null was sent.",
+          "C# message property '{}.{}' has unsupported value type '{}'; C# handlers receive null for it.",
           msg.GetDynamicRTTI()->GetTypeName(), pProperty->GetPropertyName(), value.GetType());
       }
     }

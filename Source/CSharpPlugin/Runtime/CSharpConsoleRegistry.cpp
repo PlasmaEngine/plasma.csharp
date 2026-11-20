@@ -103,6 +103,18 @@ namespace
     return plCSharpStatus::Success;
   }
 
+  /// The world console commands and tools act on: the active game state's main world, if any.
+  plWorld* GetConsoleWorld()
+  {
+    if (plGameApplicationBase* pApp = plGameApplicationBase::GetGameApplicationBaseInstance())
+    {
+      if (auto* pGameState = plDynamicCast<plGameState*>(pApp->GetActiveGameState()))
+        return pGameState->GetMainWorld();
+    }
+
+    return nullptr;
+  }
+
   const plCSharpManagedConsoleApiV1* GetManagedConsoleApi()
   {
     const plCSharpManagedApiV1* pManaged = plCSharpProjectRuntime::GetSingleton().GetManagedApi();
@@ -134,6 +146,13 @@ plCSharpConsoleFunction::plCSharpConsoleFunction(plStringView sName, plStringVie
   , m_uiCommandId(uiCommandId)
   , m_ParameterTypes(std::move(parameterTypes))
 {
+}
+
+plCSharpConsoleFunction::~plCSharpConsoleFunction()
+{
+  auto& registry = plCSharpObjectRegistry::GetSingleton();
+  for (const plCSharpObjectHandle& handle : m_BorrowedHandles)
+    registry.UnregisterObject(handle);
 }
 
 plUInt32 plCSharpConsoleFunction::GetNumParameters() const
@@ -212,8 +231,15 @@ plResult plCSharpConsoleFunction::Call(plArrayPtr<plVariant> params)
     }
   }
 
-  const plCSharpStatus status =
-    pApi->m_InvokeCommand(m_uiGeneration, m_uiCommandId, arguments.GetData(), arguments.GetCount());
+  // Commands run from console input, outside any world update, so they get the same world context as
+  // console tools; without it every engine call from the command is rejected.
+  plCSharpStatus status = plCSharpStatus::Success;
+  {
+    plWorld* pWorld = GetConsoleWorld();
+    ScopedWorldWrite worldAccess(pWorld);
+    plCSharpExecutionScope scope(pWorld, &m_BorrowedHandles);
+    status = pApi->m_InvokeCommand(m_uiGeneration, m_uiCommandId, arguments.GetData(), arguments.GetCount());
+  }
 
   if (status != plCSharpStatus::Success)
   {
@@ -258,12 +284,7 @@ void plCSharpConsoleTool::OnDrawImGui()
   // world on the stack. Without one every binding call is rejected as InvalidArgument, which is what
   // a tool that only reads the game state hits first. The game state's world is the one a tool is
   // about; a tool that only draws ImGui is unaffected when there is none.
-  plWorld* pWorld = nullptr;
-  if (plGameApplicationBase* pApp = plGameApplicationBase::GetGameApplicationBaseInstance())
-  {
-    if (auto* pGameState = plDynamicCast<plGameState*>(pApp->GetActiveGameState()))
-      pWorld = pGameState->GetMainWorld();
-  }
+  plWorld* pWorld = GetConsoleWorld();
 
   ScopedWorldWrite worldAccess(pWorld);
   plCSharpExecutionScope scope(pWorld, &m_BorrowedHandles);

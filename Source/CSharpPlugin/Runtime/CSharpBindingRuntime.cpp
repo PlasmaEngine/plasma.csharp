@@ -100,6 +100,43 @@ namespace
     return PL_SUCCESS;
   }
 
+  template <typename T>
+  static plResult ReadTaggedBytes(const plCSharpValue& value, const void* pData, plVariant& out_value)
+  {
+    if (value.m_uiPayload1 != sizeof(T))
+      return PL_FAILURE;
+
+    out_value = *static_cast<const T*>(pData);
+    return PL_SUCCESS;
+  }
+
+  static plResult ConvertTaggedBytesToVariant(const plCSharpValue& value, const void* pData, plVariant& out_value)
+  {
+    switch (plCSharpDecodeByteSpanType(value.m_Flags))
+    {
+      case plCSharpByteSpanType::Time:
+        return ReadTaggedBytes<plTime>(value, pData, out_value);
+      case plCSharpByteSpanType::Angle:
+        return ReadTaggedBytes<plAngle>(value, pData, out_value);
+      case plCSharpByteSpanType::Vec2:
+        return ReadTaggedBytes<plVec2>(value, pData, out_value);
+      case plCSharpByteSpanType::Vec2U32:
+        return ReadTaggedBytes<plVec2U32>(value, pData, out_value);
+      case plCSharpByteSpanType::Vec3:
+        return ReadTaggedBytes<plVec3>(value, pData, out_value);
+      case plCSharpByteSpanType::Vec4:
+        return ReadTaggedBytes<plVec4>(value, pData, out_value);
+      case plCSharpByteSpanType::Quat:
+        return ReadTaggedBytes<plQuat>(value, pData, out_value);
+      case plCSharpByteSpanType::Color:
+        return ReadTaggedBytes<plColor>(value, pData, out_value);
+      case plCSharpByteSpanType::Transform:
+        return ReadTaggedBytes<plTransform>(value, pData, out_value);
+      default:
+        return PL_FAILURE;
+    }
+  }
+
   static plResult ConvertValueToVariant(
     const plCSharpValue& value, const plRTTI* pExpectedType,
     plBitflags<plPropertyFlags> flags, plVariant& out_value)
@@ -177,6 +214,19 @@ namespace
         if (!IsObjectInCurrentWorld(pObject, pObjectType))
           return PL_FAILURE;
 
+        // An untyped slot stores world objects as handles, which stay valid to compare and resolve later.
+        if (pExpectedType == nullptr || pExpectedType == plGetStaticRTTI<plVariant>())
+        {
+          if (pObjectType != nullptr && pObjectType->IsDerivedFrom<plGameObject>())
+            out_value = static_cast<plGameObject*>(pObject)->GetHandle();
+          else if (pObjectType != nullptr && pObjectType->IsDerivedFrom<plComponent>())
+            out_value = static_cast<plComponent*>(pObject)->GetHandle();
+          else
+            out_value = plTypedPointer(pObject, pObjectType);
+
+          return PL_SUCCESS;
+        }
+
         if (IsTypeNamed(pExpectedType, "plGameObjectHandle"))
         {
           if (pObjectType == nullptr || !pObjectType->IsDerivedFrom<plGameObject>())
@@ -203,12 +253,14 @@ namespace
       }
       case plCSharpValueKind::ByteSpan:
       {
-        if (pExpectedType == nullptr || value.m_uiPayload0 == 0)
-        {
+        if (value.m_uiPayload0 == 0)
           return PL_FAILURE;
-        }
 
         const void* pData = reinterpret_cast<const void*>(value.m_uiPayload0);
+
+        if (pExpectedType == nullptr || pExpectedType == plGetStaticRTTI<plVariant>())
+          return ConvertTaggedBytesToVariant(value, pData, out_value);
+
         if (IsTypeNamed(pExpectedType, "plColorGammaUB") &&
             value.m_uiPayload1 == sizeof(plColor))
         {
@@ -276,7 +328,8 @@ namespace
   }
 
   static plResult AllocateResultBytes(
-    plCSharpValueKind kind, const void* pData, plUInt32 uiSize, plCSharpValue& out_value)
+    plCSharpValueKind kind, const void* pData, plUInt32 uiSize, plCSharpValue& out_value,
+    plCSharpByteSpanType byteSpanType = plCSharpByteSpanType::None)
   {
     void* pCopy = nullptr;
     if (uiSize > 0)
@@ -292,7 +345,7 @@ namespace
     }
 
     out_value.m_Kind = kind;
-    out_value.m_Flags = plCSharpValueFlags::ManagedOwned;
+    out_value.m_Flags = plCSharpEncodeByteSpanType(plCSharpValueFlags::ManagedOwned, byteSpanType);
     out_value.m_uiPayload0 = reinterpret_cast<plUInt64>(pCopy);
     out_value.m_uiPayload1 = uiSize;
     return PL_SUCCESS;
@@ -375,52 +428,52 @@ namespace
       case plVariantType::Time:
       {
         const plTime& data = value.Get<plTime>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Time);
       }
       case plVariantType::Angle:
       {
         const plAngle& data = value.Get<plAngle>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Angle);
       }
       case plVariantType::Vector2:
       {
         const plVec2& data = value.Get<plVec2>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Vec2);
       }
       case plVariantType::Vector2U:
       {
         const plVec2U32& data = value.Get<plVec2U32>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Vec2U32);
       }
       case plVariantType::Vector3:
       {
         const plVec3& data = value.Get<plVec3>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Vec3);
       }
       case plVariantType::Vector4:
       {
         const plVec4& data = value.Get<plVec4>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Vec4);
       }
       case plVariantType::Quaternion:
       {
         const plQuat& data = value.Get<plQuat>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Quat);
       }
       case plVariantType::Color:
       {
         const plColor& data = value.Get<plColor>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Color);
       }
       case plVariantType::ColorGamma:
       {
         const plColor data = value.Get<plColorGammaUB>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Color);
       }
       case plVariantType::Transform:
       {
         const plTransform& data = value.Get<plTransform>();
-        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value);
+        return AllocateResultBytes(plCSharpValueKind::ByteSpan, &data, sizeof(data), out_value, plCSharpByteSpanType::Transform);
       }
       case plVariantType::TypedPointer:
       {

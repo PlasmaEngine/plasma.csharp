@@ -53,7 +53,16 @@ public abstract class ComponentScript
                 if (!_acceptPostedActions || _posted.Count == 0) return;
                 action = _posted.Dequeue();
             }
-            action();
+
+            // A failing action is reported on its own and does not pause this script's Update.
+            try
+            {
+                action();
+            }
+            catch (Exception exception)
+            {
+                ReportFailure($"A posted action of '{GetType().FullName}' failed", exception);
+            }
         }
     }
 
@@ -79,16 +88,45 @@ public abstract class ComponentScript
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void __Detach()
     {
-        lock (_posted) { _acceptPostedActions = false; _posted.Clear(); }
-        // Cancellation callbacks must not prevent native context cleanup.
-        try { _lifetime.Cancel(); }
-        catch (AggregateException exception) { Log.Error("Script lifetime cancellation callback failed", exception); }
-        SaveGame.DisposeOwned(this);
-        GameSettings.DisposeOwned(this);
-        Platform.DisposeOwned(this);
+        lock (_posted)
+        {
+            _acceptPostedActions = false;
+            _posted.Clear();
+        }
+
+        // Each step runs even when an earlier one throws, so the native context is always released.
+        DetachStep("lifetime cancellation", _lifetime.Cancel);
+        DetachStep("save game clients", () => SaveGame.DisposeOwned(this));
+        DetachStep("settings clients", () => GameSettings.DisposeOwned(this));
+        DetachStep("platform clients", () => Platform.DisposeOwned(this));
+
         Owner = default;
         World = default;
         OwnerComponent = default;
+    }
+
+    private void DetachStep(string name, Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception exception)
+        {
+            ReportFailure($"Releasing {name} of '{GetType().FullName}' failed", exception);
+        }
+    }
+
+    // Outside the engine (script tests) there is no native log to write to; the failure is still contained.
+    private static void ReportFailure(string message, Exception exception)
+    {
+        try
+        {
+            Log.Error(message, exception);
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 }
 

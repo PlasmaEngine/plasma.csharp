@@ -75,7 +75,12 @@ public:
   /// Returns false when there is no active managed-script execution scope.
   static bool TrackBorrowedHandle(plCSharpObjectHandle handle);
 
+  /// Detaches a handle list that is about to be destroyed from this thread's active scopes,
+  /// including outer scopes that restore it when they end.
+  static void ForgetBorrowedHandles(const plDynamicArray<plCSharpObjectHandle>* pBorrowedHandles);
+
 private:
   plWorld* m_pPreviousWorld = nullptr;
   plDynamicArray<plCSharpObjectHandle>* m_pPreviousBorrowedHandles = nullptr;
+  plCSharpExecutionScope* m_pPreviousScope = nullptr;
 };

@@ -35,6 +35,13 @@ Thumbs.db
 # A committed copy goes stale the moment anything ships.
 Package.sha256
 
-# .NET build output of the managed projects (the package payload is Bin/ at the root)
+# .NET build output of the managed projects
 Source/**/bin/
 Source/**/obj/
+
+# The package payload: built by plasmabuild, staged by the packaging step, never committed
+/Bin/
+
+# Written by engine runs started from the package directory
+plDefaultAssertHandlerOutput.txt
+plMemoryLeaks.txt

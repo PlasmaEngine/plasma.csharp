@@ -214,15 +214,16 @@ namespace
            contents.FindSubString("Plasma.Engine.Generator.csproj") != nullptr;
   }
 
-  void RemoveLegacyAutomaticProjects(plStringView sAutomaticProjectAsset)
+  // Old per-folder project assets are reported, never deleted: an asset that looks legacy may be a
+  // project the user made on purpose, and a deletion here cannot be undone.
+  void ReportLegacyAutomaticProjects(plStringView sAutomaticProjectAsset)
   {
-    struct LegacyProject
-    {
-      plString m_sAsset;
-      plString m_sProjectFile;
-    };
+    static bool s_bReported = false;
+    if (s_bReported)
+      return;
 
-    plDynamicArray<LegacyProject> legacyProjects;
+    s_bReported = true;
+
     const auto knownAssets = plAssetCurator::GetSingleton()->GetKnownAssets();
     for (auto it = knownAssets->GetIterator(); it.IsValid(); ++it)
     {
@@ -234,32 +235,23 @@ namespace
         continue;
       }
 
-      LegacyProject& legacy = legacyProjects.ExpandAndGetRef();
-      legacy.m_sAsset = pInfo->m_Path.GetAbsolutePath();
+      plStringBuilder projectFile;
       if (const plCSharpProjectAssetMetaData* pMetadata =
             pInfo->m_Info->GetMetaInfo<plCSharpProjectAssetMetaData>())
       {
-        plStringBuilder projectFile;
         ResolveProjectFile(*pInfo, *pMetadata, projectFile);
-        legacy.m_sProjectFile = projectFile;
-      }
-    }
-
-    for (const LegacyProject& legacy : legacyProjects)
-    {
-      plDocumentManager::EnsureDocumentIsClosedInAllManagers(legacy.m_sAsset);
-      if (plOSFile::DeleteFile(legacy.m_sAsset).Succeeded())
-      {
-        plLog::Info("Removed legacy per-folder C# project asset '{}'.", legacy.m_sAsset);
-        plAssetCurator::GetSingleton()->NotifyOfFileChange(legacy.m_sAsset);
       }
 
-      if (!legacy.m_sProjectFile.IsEmpty() &&
-          IsGeneratedProjectFile(legacy.m_sProjectFile) &&
-          plOSFile::DeleteFile(legacy.m_sProjectFile).Succeeded())
+      if (!projectFile.IsEmpty() && IsGeneratedProjectFile(projectFile))
       {
-        plLog::Info("Removed legacy generated C# project '{}'.", legacy.m_sProjectFile);
-        plAssetCurator::GetSingleton()->NotifyOfFileChange(legacy.m_sProjectFile);
+        plLog::Warning("'{}' is a C# project asset in the old per-folder layout. Scripts are built by '{}' now; "
+                       "delete '{}' and '{}' once you no longer need them.",
+          pInfo->m_Path.GetAbsolutePath(), sAutomaticProjectAsset, pInfo->m_Path.GetAbsolutePath(), projectFile);
+      }
+      else
+      {
+        plLog::Warning("'{}' is a second C# project asset. Only '{}' builds the project's scripts; this one is not built.",
+          pInfo->m_Path.GetAbsolutePath(), sAutomaticProjectAsset);
       }
     }
   }
@@ -286,7 +278,7 @@ namespace
     }
 
     if (pDocument != nullptr)
-      RemoveLegacyAutomaticProjects(projectAsset);
+      ReportLegacyAutomaticProjects(projectAsset);
 
     return plDynamicCast<plCSharpProjectAssetDocument*>(pDocument);
   }

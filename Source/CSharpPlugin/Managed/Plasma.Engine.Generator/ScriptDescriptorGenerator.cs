@@ -276,7 +276,7 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
          .ToArray();
 
         var fields = new List<FieldModel>();
-        foreach (ISymbol member in script.GetMembers()
+        foreach (ISymbol member in GetScriptMembers(script)
                      .Where(static member => FindAttribute(member, ExposeAttributeName) is not null)
                      .OrderBy(static member => member.Name, StringComparer.Ordinal))
         {
@@ -382,12 +382,16 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             }
         }
         var handledMessages = new HashSet<string>(StringComparer.Ordinal);
-        foreach (IMethodSymbol method in script.GetMembers()
+        foreach (IMethodSymbol method in GetScriptMembers(script)
                      .OfType<IMethodSymbol>()
                      .Where(static method => FindAttribute(method, MessageAttributeName) is not null)
                      .OrderBy(static method => method.Name, StringComparer.Ordinal))
         {
+            // The generated dispatcher lives in the script class, so a base class's private handler is out of its reach.
+            bool reachable = SymbolEqualityComparer.Default.Equals(method.ContainingType, script) ||
+                             method.DeclaredAccessibility != Accessibility.Private;
             bool signatureValid =
+                reachable &&
                 !method.IsStatic &&
                 method.ReturnsVoid &&
                 method.Parameters.Length == 1 &&
@@ -540,6 +544,31 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         }
 
         return sourceFile.Replace('\\', '/');
+    }
+
+    /// <summary>Members of the script and of its base classes below ComponentScript, most derived first.
+    /// A base member hidden or overridden by a more derived one (same name, same parameter types) is skipped.</summary>
+    private static IEnumerable<ISymbol> GetScriptMembers(INamedTypeSymbol script)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (INamedTypeSymbol? current = script;
+             current is not null &&
+             current.SpecialType != SpecialType.System_Object &&
+             current.ToDisplayString() != ComponentScriptName;
+             current = current.BaseType)
+        {
+            foreach (ISymbol member in current.GetMembers())
+            {
+                string key = member is IMethodSymbol method
+                    ? method.Name + "(" + string.Join(",", method.Parameters.Select(static p => p.Type.ToDisplayString())) + ")"
+                    : member.Name;
+
+                if (seen.Add(key))
+                {
+                    yield return member;
+                }
+            }
+        }
     }
 
     private static LifecycleModel? CreateLifecycleModel(

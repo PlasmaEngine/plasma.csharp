@@ -31,6 +31,60 @@
 
 namespace
 {
+  /// Orders "10.0.9" before "10.0.10": dotted version strings compared part by part as numbers.
+  bool IsNewerVersion(plStringView sCandidate, plStringView sCurrent)
+  {
+    const plStringBuilder candidateText(sCandidate);
+    const plStringBuilder currentText(sCurrent);
+    plHybridArray<plStringView, 4> candidate;
+    plHybridArray<plStringView, 4> current;
+    candidateText.Split(false, candidate, ".");
+    currentText.Split(false, current, ".");
+
+    for (plUInt32 i = 0; i < plMath::Max(candidate.GetCount(), current.GetCount()); ++i)
+    {
+      plUInt32 uiCandidate = 0;
+      plUInt32 uiCurrent = 0;
+      if (i < candidate.GetCount())
+        plConversionUtils::StringToUInt(candidate[i], uiCandidate).IgnoreResult();
+      if (i < current.GetCount())
+        plConversionUtils::StringToUInt(current[i], uiCurrent).IgnoreResult();
+
+      if (uiCandidate != uiCurrent)
+        return uiCandidate > uiCurrent;
+    }
+
+    return false;
+  }
+
+  /// The newest host/fxr/<version>/hostfxr.dll of a private .NET runtime, or empty when it has none.
+  plStringBuilder FindPrivateHostFxr(plStringView sDotNetRoot)
+  {
+    plStringBuilder sFxrRoot(sDotNetRoot);
+    sFxrRoot.AppendPath("host/fxr");
+
+    plDynamicArray<plFileStats> versions;
+    plOSFile::GatherAllItemsInFolder(versions, sFxrRoot, plFileSystemIteratorFlags::ReportFolders);
+
+    plStringBuilder sBest;
+    plString sBestVersion;
+    for (const plFileStats& version : versions)
+    {
+      plStringBuilder sCandidate(sFxrRoot);
+      sCandidate.AppendPath(version.m_sName, "hostfxr.dll");
+      if (!plOSFile::ExistsFile(sCandidate))
+        continue;
+
+      if (sBest.IsEmpty() || IsNewerVersion(version.m_sName, sBestVersion))
+      {
+        sBest = sCandidate;
+        sBestVersion = version.m_sName;
+      }
+    }
+
+    return sBest;
+  }
+
   /// \brief The directory this plugin's own DLL was loaded from, or empty if that cannot be determined.
   ///
   /// The C# payload - the managed assemblies, and the optional private .NET runtime - ships beside
@@ -205,6 +259,35 @@ namespace
     return true;
   }
 
+  static bool ReadJsonDouble(
+    const plVariantDictionary& dictionary, plStringView sName, double& out_fValue)
+  {
+    const plVariant* pValue = dictionary.GetValue(sName);
+    if (pValue == nullptr || !pValue->IsNumber())
+      return false;
+    out_fValue = pValue->ConvertTo<double>();
+    return true;
+  }
+
+  /// Reads {"X","Y","Z","W"}, the form the native-to-managed message writer uses for quaternions.
+  static bool ReadJsonQuat(const plVariantDictionary& dictionary, plQuat& out_value)
+  {
+    return ReadJsonNumber(dictionary, "X", out_value.x) && ReadJsonNumber(dictionary, "Y", out_value.y) &&
+           ReadJsonNumber(dictionary, "Z", out_value.z) && ReadJsonNumber(dictionary, "W", out_value.w);
+  }
+
+  static bool ReadJsonVec3(const plVariantDictionary& dictionary, plVec3& out_value)
+  {
+    return ReadJsonNumber(dictionary, "X", out_value.x) && ReadJsonNumber(dictionary, "Y", out_value.y) &&
+           ReadJsonNumber(dictionary, "Z", out_value.z);
+  }
+
+  static const plVariantDictionary* ReadJsonObject(const plVariantDictionary& dictionary, plStringView sName)
+  {
+    const plVariant* pValue = dictionary.GetValue(sName);
+    return pValue != nullptr && pValue->IsA<plVariantDictionary>() ? &pValue->Get<plVariantDictionary>() : nullptr;
+  }
+
   static bool ReadJsonUInt32(
     const plVariantDictionary& dictionary, plStringView sName, plUInt32& out_uiValue)
   {
@@ -287,6 +370,48 @@ namespace
             return PL_SUCCESS;
           }
           break;
+        case plVariantType::Quaternion:
+        {
+          plQuat rotation;
+          if (ReadJsonQuat(dictionary, rotation))
+          {
+            out_value = rotation;
+            return PL_SUCCESS;
+          }
+          break;
+        }
+        case plVariantType::Time:
+        {
+          double fSeconds = 0.0;
+          if (ReadJsonDouble(dictionary, "Seconds", fSeconds))
+          {
+            out_value = plTime::MakeFromSeconds(fSeconds);
+            return PL_SUCCESS;
+          }
+          break;
+        }
+        case plVariantType::Angle:
+          if (ReadJsonNumber(dictionary, "Radians", x))
+          {
+            out_value = plAngle::MakeFromRadian(x);
+            return PL_SUCCESS;
+          }
+          break;
+        case plVariantType::Transform:
+        {
+          const plVariantDictionary* pPosition = ReadJsonObject(dictionary, "Position");
+          const plVariantDictionary* pRotation = ReadJsonObject(dictionary, "Rotation");
+          const plVariantDictionary* pScale = ReadJsonObject(dictionary, "Scale");
+          plTransform transform = plTransform::MakeIdentity();
+          if (pPosition != nullptr && pRotation != nullptr && pScale != nullptr &&
+              ReadJsonVec3(*pPosition, transform.m_vPosition) && ReadJsonQuat(*pRotation, transform.m_qRotation) &&
+              ReadJsonVec3(*pScale, transform.m_vScale))
+          {
+            out_value = transform;
+            return PL_SUCCESS;
+          }
+          break;
+        }
         default:
           break;
       }
@@ -509,9 +634,8 @@ plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)
   sPrivateDotNetRoot.AppendPath("DotNet");
   sPrivateDotNetRoot.MakeCleanPath();
 
-  plStringBuilder sPrivateHostFxr(sPrivateDotNetRoot);
-  sPrivateHostFxr.AppendPath("host/fxr/10.0.10/hostfxr.dll");
-  const bool bUsePrivateRuntime = plOSFile::ExistsFile(sPrivateHostFxr);
+  const plStringBuilder sPrivateHostFxr = FindPrivateHostFxr(sPrivateDotNetRoot);
+  const bool bUsePrivateRuntime = !sPrivateHostFxr.IsEmpty();
 
   // CoreCLR requires native Windows absolute paths in its trusted assembly list.
   sPrivateDotNetRoot.ReplaceAll("/", "\\");

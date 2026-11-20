@@ -242,14 +242,16 @@ namespace
             uiMessageId = 0; // The envelope supplies the custom message type ID.
           }
 
+          // A message from a plugin that is absent in this build only disables that handler; the
+          // rest of the script still loads.
           const plRTTI* pMessageType = plRTTI::FindTypeByName(sNativeTypeName);
           if (pMessageType == nullptr || !pMessageType->IsDerivedFrom<plMessage>() ||
               pMessageType->GetAllocator() == nullptr)
           {
-            plLog::Error(
-              "C# message handler references unavailable native message type '{}'.",
+            plLog::Warning(
+              "C# message handler for '{}' is skipped: that native message type is not available in this build.",
               sNativeTypeName);
-            return PL_FAILURE;
+            continue;
           }
 
           plDynamicArray<const plAbstractProperty*> properties;

@@ -57,7 +57,20 @@ public static unsafe partial class Bootstrap
         }
         return CSharpStatus.Success;
     }
+    // Runs on a timer thread: an exception escaping it would terminate the process.
     private static void SweepRetired(object? state)
+    {
+        try
+        {
+            SweepRetiredCore();
+        }
+        catch (Exception exception)
+        {
+            Log(CSharpLogLevel.Warning, $"Collecting retired C# generations failed: {exception.Message}");
+        }
+    }
+
+    private static void SweepRetiredCore()
     {
         List<UnloadTicket> collected = [];
         bool requestCollection;

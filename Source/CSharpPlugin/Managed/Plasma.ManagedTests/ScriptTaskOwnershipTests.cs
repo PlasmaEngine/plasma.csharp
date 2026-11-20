@@ -33,6 +33,35 @@ public sealed class ScriptTaskOwnershipTests
     }
 
     [Fact]
+    public void AFailingPostedActionDoesNotStopTheOthers()
+    {
+        var script = new Script();
+        script.__EnableUpdateDispatch(true);
+        int applied = 0;
+        Assert.True(script.PostToUpdate(() => throw new InvalidOperationException("posted action failure")));
+        Assert.True(script.PostToUpdate(() => ++applied));
+
+        script.__DrainPostedActions();
+
+        Assert.Equal(1, applied);
+        script.__Detach();
+    }
+
+    [Fact]
+    public void DetachReleasesEverythingWhenACancellationCallbackThrows()
+    {
+        var script = new Script();
+        var world = new World(new NativeObject(2, 1, NativeObjectKind.World));
+        script.__Attach(new(default, world.Native, default));
+        script.LifetimeCancellation.Register(() => throw new InvalidOperationException("cancellation callback failure"));
+
+        script.__Detach();
+
+        Assert.False(script.World.IsValid);
+        Assert.True(script.LifetimeCancellation.IsCancellationRequested);
+    }
+
+    [Fact]
     public void DispatchIsBoundedAndRejectsAsyncVoidActions()
     {
         var script = new Script();

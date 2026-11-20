@@ -4,6 +4,7 @@
 #include <Core/World/Component.h>
 #include <Core/World/GameObject.h>
 #include <Core/World/World.h>
+#include <Core/World/WorldModule.h>
 
 namespace
 {
@@ -11,6 +12,22 @@ namespace
 
   thread_local plWorld* s_pCurrentScriptWorld = nullptr;
   thread_local plDynamicArray<plCSharpObjectHandle>* s_pBorrowedHandles = nullptr;
+  thread_local plCSharpExecutionScope* s_pCurrentScope = nullptr;
+
+  void PruneDeadHandles(plDynamicArray<plCSharpObjectHandle>& inout_handles)
+  {
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+    for (plUInt32 i = inout_handles.GetCount(); i-- > 0;)
+    {
+      void* pObject = nullptr;
+      const plRTTI* pType = nullptr;
+      if (registry.ResolveObject(inout_handles[i], pObject, pType) == plCSharpStatus::Success)
+        continue;
+
+      registry.UnregisterObject(inout_handles[i]);
+      inout_handles.RemoveAtAndSwap(i);
+    }
+  }
 } // namespace
 
 plCSharpObjectRegistry& plCSharpObjectRegistry::GetSingleton()
@@ -79,6 +96,20 @@ plCSharpObjectHandle plCSharpObjectRegistry::RegisterObject(
     auto* pComponent = static_cast<plComponent*>(pObject);
     entry.m_pWorld = pComponent->GetWorld();
     entry.m_hComponent = pComponent->GetHandle();
+  }
+  else
+  {
+    // Other objects are only reachable as raw pointers. Tie them to the world they were obtained in
+    // (a world module's own world), so they stop resolving once that world is destroyed.
+    plWorld* pWorld = plCSharpExecutionScope::GetCurrentWorld();
+    if (pType != nullptr && pType->IsDerivedFrom<plWorldModule>())
+      pWorld = static_cast<plWorldModule*>(pObject)->GetWorld();
+
+    if (pWorld != nullptr)
+    {
+      entry.m_pWorld = pWorld;
+      entry.m_uiWorldIndex = pWorld->GetIndex();
+    }
   }
 
   plCSharpObjectHandle handle;
@@ -233,6 +264,12 @@ bool plCSharpObjectRegistry::TryResolveEntry(
     return true;
   }
 
+  if (entry.m_pWorld != nullptr &&
+      (entry.m_uiWorldIndex >= plWorld::GetWorldCount() || plWorld::GetWorld(entry.m_uiWorldIndex) != entry.m_pWorld))
+  {
+    return false;
+  }
+
   out_pObject = entry.m_pObject;
   return out_pObject != nullptr;
 }
@@ -241,15 +278,33 @@ plCSharpExecutionScope::plCSharpExecutionScope(plWorld* pWorld,
   plDynamicArray<plCSharpObjectHandle>* pBorrowedHandles)
   : m_pPreviousWorld(s_pCurrentScriptWorld)
   , m_pPreviousBorrowedHandles(s_pBorrowedHandles)
+  , m_pPreviousScope(s_pCurrentScope)
 {
   s_pCurrentScriptWorld = pWorld;
   s_pBorrowedHandles = pBorrowedHandles;
+  s_pCurrentScope = this;
 }
 
 plCSharpExecutionScope::~plCSharpExecutionScope()
 {
   s_pCurrentScriptWorld = m_pPreviousWorld;
   s_pBorrowedHandles = m_pPreviousBorrowedHandles;
+  s_pCurrentScope = m_pPreviousScope;
+}
+
+void plCSharpExecutionScope::ForgetBorrowedHandles(const plDynamicArray<plCSharpObjectHandle>* pBorrowedHandles)
+{
+  if (pBorrowedHandles == nullptr)
+    return;
+
+  if (s_pBorrowedHandles == pBorrowedHandles)
+    s_pBorrowedHandles = nullptr;
+
+  for (plCSharpExecutionScope* pScope = s_pCurrentScope; pScope != nullptr; pScope = pScope->m_pPreviousScope)
+  {
+    if (pScope->m_pPreviousBorrowedHandles == pBorrowedHandles)
+      pScope->m_pPreviousBorrowedHandles = nullptr;
+  }
 }
 
 plWorld* plCSharpExecutionScope::GetCurrentWorld()
@@ -273,6 +328,10 @@ bool plCSharpExecutionScope::TrackBorrowedHandle(plCSharpObjectHandle handle)
       return true;
     }
   }
+
+  // A full list usually holds objects that have since been deleted; release those before refusing.
+  if (s_pBorrowedHandles->GetCount() >= s_uiMaxBorrowedHandlesPerInstance)
+    PruneDeadHandles(*s_pBorrowedHandles);
 
   if (s_pBorrowedHandles->GetCount() >= s_uiMaxBorrowedHandlesPerInstance)
   {

@@ -63,6 +63,17 @@ public:
   virtual void CancelReloadPreparation() override;
 
 private:
+  /// One per managed call in progress. Managed code can delete its own component, which destroys this
+  /// instance mid-call; the destructor marks every open frame so the callers return without touching it.
+  struct CallFrame
+  {
+    bool m_bDestroyed = false;
+    CallFrame* m_pOuter = nullptr;
+  };
+
+  void EnterCall(CallFrame& frame);
+  void LeaveCall(CallFrame& frame);
+
   const plCSharpFieldInfo* FindField(const plHashedString& sName) const;
   plResult SetField(const plCSharpFieldInfo& field, const plVariant& value);
   plVariant GetField(const plCSharpFieldInfo& field) const;
@@ -73,6 +84,7 @@ private:
   plCSharpObjectHandle m_WorldHandle;
   plCSharpObjectHandle m_ComponentHandle;
   mutable plDynamicArray<plCSharpObjectHandle> m_BorrowedHandles;
+  CallFrame* m_pCallFrame = nullptr;
   plString m_sOwnerName;
   plUInt8 m_uiLoggedLifecycleFailures = 0;
   bool m_bSimulationStartLogged = false;
