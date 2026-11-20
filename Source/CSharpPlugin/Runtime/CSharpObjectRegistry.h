@@ -69,8 +69,13 @@ private:
     plCSharpNativeObjectKind m_Kind = plCSharpNativeObjectKind::Invalid;
   };
 
+  static plUInt64 ComputeIdentity(const void* pObject, const plRTTI* pType, plCSharpNativeObjectKind kind);
+
   mutable plMutex m_Mutex;
   plHashTable<plUInt64, Entry> m_Entries;
+  /// Object identity (pointer, type, kind) to the id of its newest entry, so registering an object
+  /// that already has a handle is one lookup rather than a scan of every entry.
+  plHashTable<plUInt64, plUInt64> m_Identities;
   plUInt64 m_uiNextId = 1;
   plUInt64 m_uiNextGeneration = 1;
 

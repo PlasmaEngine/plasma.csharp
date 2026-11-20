@@ -138,6 +138,35 @@ namespace
       return PL_SUCCESS;
     };
 
+    // Registering an object must not get slower as more objects are registered.
+    {
+      plDynamicArray<plGameObject*> objects;
+      for (plUInt32 i = 0; i < 20000; ++i)
+      {
+        plGameObject* pExtra = nullptr;
+        world.CreateObject(plGameObjectDesc(), pExtra);
+        objects.PushBack(pExtra);
+      }
+
+      plDynamicArray<plCSharpObjectHandle> handles;
+      handles.Reserve(objects.GetCount());
+      const plTime start = plTime::Now();
+      for (plGameObject* pExtra : objects)
+        handles.PushBack(registry.RegisterObject(pExtra, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject));
+      const double fFirst = (plTime::Now() - start).GetNanoseconds() / objects.GetCount();
+
+      const plTime repeatStart = plTime::Now();
+      for (plGameObject* pExtra : objects)
+        registry.UnregisterObject(registry.RegisterObject(pExtra, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject));
+      const double fRepeat = (plTime::Now() - repeatStart).GetNanoseconds() / objects.GetCount();
+
+      for (const plCSharpObjectHandle& handle : handles)
+        registry.UnregisterObject(handle);
+
+      plLog::Info("Handle registry with 20000 objects: {} ns to register a new object, {} ns to find an existing one",
+        plArgF(fFirst, 1), plArgF(fRepeat, 1));
+    }
+
     PL_SUCCEED_OR_RETURN(measure("Component.IsActive()", uiIsActive, hComponent, nullptr, 0));
     PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition get", uiLocalPosition, hObject, nullptr, 0));
     PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition set", uiLocalPosition, hObject, &positionValue, 1));

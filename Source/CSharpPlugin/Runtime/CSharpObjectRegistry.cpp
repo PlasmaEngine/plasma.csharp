@@ -5,6 +5,7 @@
 #include <Core/World/GameObject.h>
 #include <Core/World/World.h>
 #include <Core/World/WorldModule.h>
+#include <Foundation/Algorithm/HashingUtils.h>
 
 namespace
 {
@@ -47,32 +48,28 @@ plCSharpObjectHandle plCSharpObjectRegistry::RegisterObject(
 
   PL_LOCK(m_Mutex);
 
-  for (auto it = m_Entries.GetIterator(); it.IsValid(); ++it)
+  // Reuse the object's current entry when it still resolves to this object. A stale entry (the
+  // object died and the address was reused) is left to its holders and replaced in the index.
+  const plUInt64 uiIdentity = ComputeIdentity(pObject, pType, kind);
+  if (const plUInt64* pExistingId = m_Identities.GetValue(uiIdentity))
   {
-    Entry& existing = it.Value();
-    if (existing.m_pObject != pObject || existing.m_pType != pType ||
-        existing.m_Kind != kind)
-    {
-      continue;
-    }
-
-    // Resolve only the matching identity. Scanning and resolving every global
-    // entry here could touch unrelated worlds without their access marker and
-    // made registration O(all live handles plus cross-world lookups).
+    Entry* pExisting = nullptr;
     void* pExistingObject = nullptr;
-    if (TryResolveEntry(existing, pExistingObject) &&
-        pExistingObject == pObject)
+    if (m_Entries.TryGetValue(*pExistingId, pExisting) && pExisting->m_pObject == pObject &&
+        pExisting->m_pType == pType && pExisting->m_Kind == kind &&
+        TryResolveEntry(*pExisting, pExistingObject) && pExistingObject == pObject)
     {
-      ++existing.m_uiReferenceCount;
+      ++pExisting->m_uiReferenceCount;
       plCSharpObjectHandle handle;
-      handle.m_uiValue = it.Key();
-      handle.m_uiGeneration = existing.m_uiGeneration;
+      handle.m_uiValue = *pExistingId;
+      handle.m_uiGeneration = pExisting->m_uiGeneration;
       handle.m_uiKind = static_cast<plUInt32>(kind);
       return handle;
     }
   }
 
   const plUInt64 uiId = m_uiNextId++;
+  m_Identities[uiIdentity] = uiId;
   Entry& entry = m_Entries[uiId];
   entry.m_pObject = pObject;
   entry.m_pType = pType;
@@ -142,10 +139,30 @@ void plCSharpObjectRegistry::UnregisterObject(plCSharpObjectHandle handle)
   // address reuse to make an old managed handle resolve to a new object.
   if (pEntry->m_uiReferenceCount == 0)
   {
+    const plUInt64 uiIdentity = ComputeIdentity(pEntry->m_pObject, pEntry->m_pType, pEntry->m_Kind);
+    if (const plUInt64* pIndexed = m_Identities.GetValue(uiIdentity); pIndexed != nullptr && *pIndexed == handle.m_uiValue)
+      m_Identities.Remove(uiIdentity);
+
     m_Entries.Remove(handle.m_uiValue);
     if (m_Entries.IsEmpty())
+    {
       m_Entries.Compact();
+      m_Identities.Compact();
+    }
   }
+}
+
+plUInt64 plCSharpObjectRegistry::ComputeIdentity(const void* pObject, const plRTTI* pType, plCSharpNativeObjectKind kind)
+{
+  // A hash collision only costs a lookup miss: RegisterObject compares the full identity.
+  const struct
+  {
+    const void* m_pObject;
+    const plRTTI* m_pType;
+    plUInt64 m_uiKind;
+  } identity = {pObject, pType, static_cast<plUInt64>(kind)};
+
+  return plHashingUtils::xxHash64(&identity, sizeof(identity));
 }
 
 plCSharpStatus plCSharpObjectRegistry::ValidateObject(
