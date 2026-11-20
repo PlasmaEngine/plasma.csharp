@@ -99,12 +99,57 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor LifecycleNeverCalled = new(
+        "PLCS010",
+        "Lifecycle method is never called",
+        "'{0}.{1}' does not override ComponentScript.{1}, so the engine never calls it; declare it as 'public override {2}'",
+        "Plasma.Scripting",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor MetadataWithoutExpose = new(
+        "PLCS011",
+        "Inspector attribute without [Expose]",
+        "'{0}.{1}' has [{2}] but no [Expose], so it does not appear in the editor; add [Expose] or remove [{2}]",
+        "Plasma.Scripting",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor MetadataWrongType = new(
+        "PLCS012",
+        "Inspector attribute does not fit the member type",
+        "[{2}] on '{0}.{1}' has no effect: it applies to {3}",
+        "Plasma.Scripting",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly (string Name, string Signature)[] LifecycleMethods =
+    [
+        ("Initialize", "void Initialize()"),
+        ("Deinitialize", "void Deinitialize()"),
+        ("OnActivated", "void OnActivated()"),
+        ("OnDeactivated", "void OnDeactivated()"),
+        ("OnSimulationStarted", "void OnSimulationStarted()"),
+        ("Update", "void Update(Time deltaTime)"),
+    ];
+
+    private static readonly string[] InspectorAttributes =
+    [
+        "Plasma.RangeAttribute",
+        "Plasma.CategoryAttribute",
+        "Plasma.DisplayNameAttribute",
+        "Plasma.TooltipAttribute",
+        "Plasma.AssetAttribute",
+        "Plasma.FormerlySerializedAsAttribute",
+    ];
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<INamedTypeSymbol> scripts = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 ScriptAttributeName,
-                static (node, _) => node is ClassDeclarationSyntax,
+                // Structs and records too, so a [PlasmaScript] on the wrong kind of type is reported, not ignored.
+                static (node, _) => node is TypeDeclarationSyntax,
                 static (attributeContext, _) => (INamedTypeSymbol)attributeContext.TargetSymbol);
 
         IncrementalValuesProvider<ManifestMessageCatalog> manifestMessages =
@@ -194,9 +239,11 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         bool valid = true;
         Location location = script.Locations.FirstOrDefault() ?? Location.None;
 
+        ReportMemberMistakes(context, script);
+
         bool isPartial = script.DeclaringSyntaxReferences
             .Select(static reference => reference.GetSyntax())
-            .OfType<ClassDeclarationSyntax>()
+            .OfType<TypeDeclarationSyntax>()
             .Any(static declaration => declaration.Modifiers.Any(SyntaxKind.PartialKeyword));
         if (!isPartial)
         {
@@ -729,6 +776,63 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             return null;
         }
     }
+
+    /// <summary>Warnings for code that compiles but silently does nothing: lifecycle methods that do not
+    /// override, and inspector attributes that the editor never sees or cannot apply.</summary>
+    private static void ReportMemberMistakes(SourceProductionContext context, INamedTypeSymbol script)
+    {
+        foreach (ISymbol member in script.GetMembers())
+        {
+            Location memberLocation = member.Locations.FirstOrDefault() ?? Location.None;
+
+            if (member is IMethodSymbol { MethodKind: MethodKind.Ordinary, IsOverride: false, IsStatic: false } method)
+            {
+                // Only shapes that look like the lifecycle method: Update() or Update(x), Initialize(); an
+                // unrelated overload such as Initialize(int) is a helper, not a mistake.
+                int maxParameters = method.Name == "Update" ? 1 : 0;
+                foreach ((string name, string signature) in LifecycleMethods)
+                {
+                    if (method.Name == name && method.Parameters.Length <= maxParameters)
+                        context.ReportDiagnostic(Diagnostic.Create(LifecycleNeverCalled, memberLocation, script.Name, name, signature));
+                }
+            }
+
+            ITypeSymbol? memberType = member switch
+            {
+                IFieldSymbol field => field.Type,
+                IPropertySymbol property => property.Type,
+                _ => null,
+            };
+            if (memberType is null)
+                continue;
+
+            bool exposed = FindAttribute(member, ExposeAttributeName) is not null;
+            foreach (string attributeName in InspectorAttributes)
+            {
+                if (FindAttribute(member, attributeName) is null)
+                    continue;
+
+                string shortName = attributeName.Substring("Plasma.".Length, attributeName.Length - "Plasma.".Length - "Attribute".Length);
+                if (!exposed)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(MetadataWithoutExpose, memberLocation, script.Name, member.Name, shortName));
+                    continue;
+                }
+
+                if (attributeName == "Plasma.RangeAttribute" && !RangeApplies(memberType))
+                    context.ReportDiagnostic(Diagnostic.Create(MetadataWrongType, memberLocation, script.Name, member.Name, shortName, "numbers, Time and Angle"));
+                else if (attributeName == "Plasma.AssetAttribute" && memberType.SpecialType != SpecialType.System_String)
+                    context.ReportDiagnostic(Diagnostic.Create(MetadataWrongType, memberLocation, script.Name, member.Name, shortName, "string members"));
+            }
+        }
+    }
+
+    private static bool RangeApplies(ITypeSymbol type) =>
+        type.SpecialType is
+            SpecialType.System_Byte or SpecialType.System_SByte or SpecialType.System_Int16 or SpecialType.System_UInt16 or
+            SpecialType.System_Int32 or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64 or
+            SpecialType.System_Single or SpecialType.System_Double ||
+        type.ToDisplayString() is "Plasma.Time" or "Plasma.Angle";
 
     private static AttributeData? FindAttribute(ISymbol symbol, string metadataName) =>
         symbol.GetAttributes().FirstOrDefault(attribute =>

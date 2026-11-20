@@ -60,6 +60,35 @@ public sealed class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void ReportsCodeThatCompilesButDoesNothing()
+    {
+        var compilation = CreateCompilation("""
+            using Plasma;
+            [PlasmaScript] public sealed partial class Mistakes : ComponentScript
+            {
+                public void Update() { }
+                public new void Initialize() { }
+                public void Initialize(int helper) { }
+                [Range(0, 1)] public float NotExposed;
+                [Expose, Range(0, 1)] public string Label = "";
+                [Expose, Asset("Prefab")] public float Spawn;
+                [Expose, Range(0, 5)] public Time Cooldown;
+            }
+            [PlasmaScript] public partial struct NotAClass { }
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ScriptDescriptorGenerator());
+        driver = driver.RunGenerators(compilation);
+        Diagnostic[] diagnostics = driver.GetRunResult().Diagnostics.ToArray();
+
+        Assert.Equal(2, diagnostics.Count(d => d.Id == "PLCS010"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS011" && d.GetMessage().Contains("NotExposed"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS012" && d.GetMessage().Contains("Label"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS012" && d.GetMessage().Contains("Spawn"));
+        Assert.DoesNotContain(diagnostics, d => d.Id == "PLCS012" && d.GetMessage().Contains("Cooldown"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS003" && d.GetMessage().Contains("NotAClass"));
+    }
+
+    [Fact]
     public void RejectsAmbiguousFormerNames()
     {
         var compilation = CreateCompilation("""
