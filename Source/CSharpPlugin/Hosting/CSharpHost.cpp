@@ -575,6 +575,7 @@ plResult plCSharpHost::Initialize(plStringView sManagedRoot)
 
   m_InitializationState =
     result.Succeeded() ? InitializationState::Initialized : InitializationState::Failed;
+  m_bManagedApiReady = result.Succeeded();
   return result;
 }
 
@@ -587,6 +588,7 @@ void plCSharpHost::Shutdown()
   const bool bWasInitialized =
     m_InitializationState == InitializationState::Initialized;
   m_InitializationState = InitializationState::ShuttingDown;
+  m_bManagedApiReady = false;
 
   if (bWasInitialized && m_ManagedApi.m_Shutdown != nullptr)
   {
@@ -606,10 +608,11 @@ bool plCSharpHost::IsInitialized() const
   return m_InitializationState == InitializationState::Initialized;
 }
 
+// Called for every script callback, so it reads an atomic rather than taking the initialization lock.
+// The table is written before the flag is set and the flag is cleared before the table is torn down.
 const plCSharpManagedApiV1* plCSharpHost::GetManagedApi() const
 {
-  PL_LOCK(m_InitializationMutex);
-  return m_InitializationState == InitializationState::Initialized ? &m_ManagedApi : nullptr;
+  return m_bManagedApiReady ? &m_ManagedApi : nullptr;
 }
 
 plResult plCSharpHost::LoadRuntimeAndBootstrap(plStringView sManagedRoot)

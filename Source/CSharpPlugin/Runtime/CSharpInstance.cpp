@@ -437,7 +437,10 @@ plResult plCSharpInstance::InvokeLifecycle(plUInt64 uiMethodId, plTime deltaTime
     EnterCall(frame);
     status = pApi->m_InvokeMethod(m_uiInstance, uiMethodId, pArguments, uiArgumentCount, &result);
   }
-  pApi->m_ReleaseValue(&result);
+
+  // Lifecycle methods return nothing; only call back into managed code when there is something to free.
+  if ((static_cast<plUInt32>(result.m_Flags) & static_cast<plUInt32>(plCSharpValueFlags::ManagedOwned)) != 0)
+    pApi->m_ReleaseValue(&result);
 
   // The script deleted its own component: this instance no longer exists.
   if (frame.m_bDestroyed)

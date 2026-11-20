@@ -419,9 +419,12 @@ public static unsafe partial class Bootstrap
         using var call = new RuntimeCall();
         Instance? diagnosticInstance = null;
         bool invokingUpdate = false;
-        string lifecycleName = methodId <= (ulong)ScriptLifecycleMethod.Update
+
+        // Only failures need the name; building it on every Update would allocate each frame.
+        string LifecycleName() => methodId <= (ulong)ScriptLifecycleMethod.Update
             ? ((ScriptLifecycleMethod)methodId).ToString()
             : $"unknown lifecycle method {methodId}";
+
         try
         {
             if (result is null || (argumentCount > 0 && arguments is null))
@@ -439,7 +442,7 @@ public static unsafe partial class Bootstrap
                 !instance.Type.Lifecycle.TryGetValue((ScriptLifecycleMethod)methodId, out ScriptLifecycleInvoker? invoke))
             {
                 return Fail(CSharpStatus.MemberNotFound,
-                    $"C# script '{instance.Type.ManagedName}' does not implement '{lifecycleName}'. " +
+                    $"C# script '{instance.Type.ManagedName}' does not implement '{LifecycleName()}'. " +
                     "Rebuild the C# scripts if this method should be present.");
             }
 
@@ -451,8 +454,9 @@ public static unsafe partial class Bootstrap
                     return Fail(CSharpStatus.InvalidArgument, "C# Update requires one time argument.");
                 }
 
-                object? converted = ConvertFromValue(*arguments, typeof(double));
-                deltaTime = Time.FromSeconds((double)converted!);
+                deltaTime = arguments->Kind == CSharpValueKind.Double
+                    ? Time.FromSeconds(BitConverter.Int64BitsToDouble(unchecked((long)arguments->Payload0)))
+                    : Time.FromSeconds((double)ConvertFromValue(*arguments, typeof(double))!);
             }
             else if (argumentCount != 0)
             {
@@ -465,13 +469,17 @@ public static unsafe partial class Bootstrap
                 instance.FailedUpdateMvid = null;
             if ((ScriptLifecycleMethod)methodId == ScriptLifecycleMethod.Update)
             {
-                lock (Sync)
+                // Paused instances are rare; reading HasValue first keeps the lock off the per-frame path.
+                if (instance.FailedUpdateMvid.HasValue)
                 {
-                    Guid revision = Generations[instance.GenerationId].CurrentMvid;
-                    if (instance.FailedUpdateMvid == revision)
+                    lock (Sync)
                     {
-                        *result = default;
-                        return CSharpStatus.Success;
+                        Guid revision = Generations[instance.GenerationId].CurrentMvid;
+                        if (instance.FailedUpdateMvid == revision)
+                        {
+                            *result = default;
+                            return CSharpStatus.Success;
+                        }
                     }
                 }
                 invokingUpdate = true;
@@ -486,7 +494,7 @@ public static unsafe partial class Bootstrap
             return Fail(
                 CSharpStatus.InvalidValue,
                 FormatScriptException(
-                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {lifecycleName}",
+                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {LifecycleName()}",
                     instanceId,
                     diagnosticInstance,
                     exception));
@@ -502,7 +510,7 @@ public static unsafe partial class Bootstrap
             return Fail(
                 CSharpStatus.ManagedException,
                 FormatScriptException(
-                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {lifecycleName}",
+                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {LifecycleName()}",
                     instanceId,
                     diagnosticInstance,
                     exception));
