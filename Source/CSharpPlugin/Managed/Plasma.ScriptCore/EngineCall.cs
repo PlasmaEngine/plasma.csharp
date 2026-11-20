@@ -29,6 +29,7 @@ public unsafe ref struct EngineCall
     private NativeValue _result;
     private List<IDisposable>? _variantLeases;
     private List<byte[]>? _keepAlive;
+    private List<NativeValue[]>? _pinnedValues;
 
     public EngineCall(ulong functionId, string apiName, NativeObject target, scoped Span<NativeValue> arguments)
     {
@@ -41,6 +42,7 @@ public unsafe ref struct EngineCall
         _result = default;
         _variantLeases = null;
         _keepAlive = null;
+        _pinnedValues = null;
     }
 
     // ---------------------------------------------------------------- arguments
@@ -115,6 +117,29 @@ public unsafe ref struct EngineCall
     /// generated method; numbers, vectors and object references need none.</summary>
     public void Any(int index, global::Plasma.Variant value, scoped Span<byte> scratch) =>
         _arguments[index] = value.ToNative(scratch, ref _keepAlive);
+
+    /// <summary>A list argument (an engine variant array). The element values live in a pinned array kept
+    /// until the call is disposed; this allocates, unlike single values.</summary>
+    public void AnyArray(int index, global::Plasma.Variant[]? values)
+    {
+        if (values is null)
+        {
+            _arguments[index] = default;
+            return;
+        }
+
+        NativeValue[] elements = GC.AllocateArray<NativeValue>(values.Length, pinned: true);
+        for (int i = 0; i < values.Length; ++i)
+            elements[i] = values[i].ToNative(default, ref _keepAlive);
+
+        (_pinnedValues ??= []).Add(elements);
+        _arguments[index] = new NativeValue
+        {
+            Kind = NativeValueKind.ValueArray,
+            Payload0 = values.Length == 0 ? 0 : (ulong)Unsafe.AsPointer(ref elements[0]),
+            Payload1 = (ulong)values.Length,
+        };
+    }
 
     /// <summary>An untyped argument of a type known only at run time.</summary>
     public void Variant(int index, object? value)
@@ -197,6 +222,21 @@ public unsafe ref struct EngineCall
 
     public readonly global::Plasma.Variant ResultAny(int index = -1) => global::Plasma.Variant.FromNative(Value(index));
 
+    /// <summary>A list result, copied out of native memory; the native copy is freed when the call is disposed.</summary>
+    public readonly global::Plasma.Variant[] ResultAnyArray(int index = -1)
+    {
+        NativeValue value = Value(index);
+        if (value.Kind != NativeValueKind.ValueArray || value.Payload1 == 0 || value.Payload0 == 0)
+            return [];
+
+        var elements = new ReadOnlySpan<NativeValue>((void*)value.Payload0, checked((int)value.Payload1));
+        var result = new global::Plasma.Variant[elements.Length];
+        for (int i = 0; i < elements.Length; ++i)
+            result[i] = global::Plasma.Variant.FromNative(elements[i]);
+
+        return result;
+    }
+
     // ---------------------------------------------------------------- cleanup
 
     public void Dispose()
@@ -217,6 +257,7 @@ public unsafe ref struct EngineCall
         }
 
         GC.KeepAlive(_keepAlive);
+        GC.KeepAlive(_pinnedValues);
     }
 
     private readonly NativeValue Value(int index) => index < 0 ? _result : _arguments[index];

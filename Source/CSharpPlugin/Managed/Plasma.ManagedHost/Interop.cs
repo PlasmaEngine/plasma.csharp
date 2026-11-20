@@ -43,6 +43,7 @@ public enum CSharpValueKind : uint
     Utf8String,
     ObjectHandle,
     ByteSpan,
+    ValueArray,
 }
 
 [Flags]

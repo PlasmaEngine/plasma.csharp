@@ -297,6 +297,27 @@ namespace
             return PL_SUCCESS;
         }
       }
+      case plCSharpValueKind::ValueArray:
+      {
+        if (value.m_uiPayload1 != 0 && value.m_uiPayload0 == 0)
+          return PL_FAILURE;
+
+        // Elements convert like untyped (variant) values.
+        const auto* pElements = reinterpret_cast<const plCSharpValue*>(value.m_uiPayload0);
+        plVariantArray elements;
+        elements.SetCount(static_cast<plUInt32>(value.m_uiPayload1));
+        for (plUInt32 i = 0; i < elements.GetCount(); ++i)
+        {
+          if (pElements[i].m_Kind == plCSharpValueKind::Null)
+            continue;
+
+          if (ConvertValueToVariant(pElements[i], nullptr, plPropertyFlags::StandardType, elements[i]).Failed())
+            return PL_FAILURE;
+        }
+
+        out_value = std::move(elements);
+        return PL_SUCCESS;
+      }
       default:
         return PL_FAILURE;
     }
@@ -513,6 +534,36 @@ namespace
         }
         return PL_FAILURE;
       }
+      case plVariantType::VariantArray:
+      {
+        const plVariantArray& elements = value.Get<plVariantArray>();
+        if (elements.IsEmpty())
+        {
+          out_value.m_Kind = plCSharpValueKind::ValueArray;
+          return PL_SUCCESS;
+        }
+
+        auto* pElements = static_cast<plCSharpValue*>(
+          plFoundation::GetDefaultAllocator()->Allocate(sizeof(plCSharpValue) * elements.GetCount(), alignof(plCSharpValue)));
+        if (pElements == nullptr)
+          return PL_FAILURE;
+
+        for (plUInt32 i = 0; i < elements.GetCount(); ++i)
+        {
+          new (&pElements[i]) plCSharpValue();
+          if (ConvertVariantToValue(elements[i], pElements[i]).Failed())
+          {
+            // An element the bridge cannot carry arrives as null rather than failing the whole call.
+            pElements[i] = {};
+          }
+        }
+
+        out_value.m_Kind = plCSharpValueKind::ValueArray;
+        out_value.m_Flags = plCSharpValueFlags::ManagedOwned;
+        out_value.m_uiPayload0 = reinterpret_cast<plUInt64>(pElements);
+        out_value.m_uiPayload1 = elements.GetCount();
+        return PL_SUCCESS;
+      }
       default:
         return PL_FAILURE;
     }
@@ -652,6 +703,13 @@ plCSharpStatus plCSharpBindingRuntime::ReleaseValue(plCSharpValue* pValue) const
         static_cast<plUInt32>(plCSharpValueFlags::ManagedOwned)) != 0 &&
       pValue->m_uiPayload0 != 0)
   {
+    if (pValue->m_Kind == plCSharpValueKind::ValueArray)
+    {
+      auto* pElements = reinterpret_cast<plCSharpValue*>(pValue->m_uiPayload0);
+      for (plUInt64 i = 0; i < pValue->m_uiPayload1; ++i)
+        ReleaseValue(&pElements[i]);
+    }
+
     plFoundation::GetDefaultAllocator()->Deallocate(
       reinterpret_cast<void*>(pValue->m_uiPayload0));
   }

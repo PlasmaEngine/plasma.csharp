@@ -167,6 +167,40 @@ namespace
         plArgF(fFirst, 1), plArgF(fRepeat, 1));
     }
 
+    // A list argument (plVariantArray) converts element by element.
+    {
+      plUInt64 uiLogInfo = 0;
+      for (const plScriptBindingFunctionDesc& function : snapshot.m_Functions)
+      {
+        if (function.m_sDeclaringTypeName == "plScriptExtensionClass_Log" && function.m_sNativeName == "Info")
+          uiLogInfo = function.m_uiStableId;
+      }
+
+      if (uiLogInfo != 0)
+      {
+        const plStringView sFormat = "C# list argument: {0} and {1}";
+        const plStringView sElement = "two";
+        plCSharpValue elements[2];
+        elements[0].m_Kind = plCSharpValueKind::Int64;
+        elements[0].m_uiPayload0 = 1;
+        elements[1].m_Kind = plCSharpValueKind::Utf8String;
+        elements[1].m_uiPayload0 = reinterpret_cast<plUInt64>(sElement.GetStartPointer());
+        elements[1].m_uiPayload1 = sElement.GetElementCount();
+
+        plCSharpValue arguments[2];
+        arguments[0].m_Kind = plCSharpValueKind::Utf8String;
+        arguments[0].m_uiPayload0 = reinterpret_cast<plUInt64>(sFormat.GetStartPointer());
+        arguments[0].m_uiPayload1 = sFormat.GetElementCount();
+        arguments[1].m_Kind = plCSharpValueKind::ValueArray;
+        arguments[1].m_uiPayload0 = reinterpret_cast<plUInt64>(elements);
+        arguments[1].m_uiPayload1 = 2;
+
+        plCSharpValue result;
+        PL_SUCCEED_OR_RETURN(Require(bindings.InvokeReflected(uiLogInfo, {}, arguments, 2, &result) == plCSharpStatus::Success, "Pass a list to Log.Info"));
+        bindings.ReleaseValue(&result);
+      }
+    }
+
     PL_SUCCEED_OR_RETURN(measure("Component.IsActive()", uiIsActive, hComponent, nullptr, 0));
     PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition get", uiLocalPosition, hObject, nullptr, 0));
     PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition set", uiLocalPosition, hObject, &positionValue, 1));

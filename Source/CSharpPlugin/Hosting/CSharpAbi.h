@@ -54,6 +54,9 @@ enum class plCSharpValueKind : plUInt32
   Utf8String,
   ObjectHandle,
   ByteSpan,
+  /// Payload 0 points to an array of plCSharpValue, payload 1 is the element count. Releasing it
+  /// releases every element first.
+  ValueArray,
 };
 
 enum class plCSharpValueFlags : plUInt32

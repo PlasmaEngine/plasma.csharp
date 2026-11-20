@@ -34,6 +34,8 @@ public enum NativeValueKind : uint
     Utf8String,
     ObjectHandle,
     ByteSpan,
+    /// <summary>Payload 0 points to an array of values, payload 1 is the element count.</summary>
+    ValueArray,
 }
 
 [Flags]

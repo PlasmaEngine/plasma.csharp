@@ -12,6 +12,7 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
     private const ulong VectorResultCall = 2;
     private const ulong RecordArgumentCall = 3;
     private const ulong InlineVectorResultCall = 4;
+    private const ulong EchoArrayCall = 5;
 
     private static CSharpValue s_lastArgument;
     private static readonly Vec3* s_vector = AllocateVector();
@@ -85,6 +86,26 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
                 __plCall.Invoke();
                 Assert.Equal(0.5f, (float)__plCall.ResultAny(-1));
             }
+        });
+    }
+
+    [Fact]
+    public void ListsCrossTheBoundary()
+    {
+        WithStub(() =>
+        {
+            Span<NativeValue> __plArgs = stackalloc NativeValue[1];
+            using EngineCall __plCall = new(EchoArrayCall, "Test.Echo", default, __plArgs);
+            __plCall.AnyArray(0, [1, "two", new Vec3(3, 3, 3), Variant.Null, new string('x', 600)]);
+            __plCall.Invoke();
+
+            Variant[] list = __plCall.ResultAnyArray(-1);
+            Assert.Equal(5, list.Length);
+            Assert.Equal(1, (int)list[0]);
+            Assert.Equal("two", list[1].ToString());
+            Assert.Equal(new Vec3(3, 3, 3), (Vec3)list[2]);
+            Assert.True(list[3].IsNull);
+            Assert.Equal(600, list[4].ToString().Length);
         });
     }
 
@@ -216,6 +237,12 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
                 result->Kind = CSharpValueKind.ByteSpan;
                 result->Flags = (CSharpValueFlags)(((uint)NativeByteSpanType.Vec3 << 16) | (uint)NativeValueFlags.InlineBytes);
                 *(Vec3*)&result->Payload0 = new Vec3(7, 8, 9);
+                return CSharpStatus.Success;
+
+            case EchoArrayCall:
+                // Returns the list it was given, as the engine returns a variant array (ManagedOwned only on
+                // native allocations, so this borrowed echo is not released).
+                *result = arguments[0];
                 return CSharpStatus.Success;
 
             case RecordArgumentCall:

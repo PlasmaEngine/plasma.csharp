@@ -303,6 +303,9 @@ public readonly struct Variant : IEquatable<Variant>, IConvertible
                     _ => throw new PlasmaException("The engine returned a value of a type a Variant cannot hold."),
                 };
             }
+            case NativeValueKind.ValueArray:
+                // A list nested inside a value has no Variant form.
+                return default;
             default:
                 throw new PlasmaException($"Native value kind '{value.Kind}' is unsupported.");
         }

@@ -568,6 +568,8 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     return new ValueCodec("Variant", type, "");
                 case "global::Plasma.Variant":
                     return new ValueCodec("Any", type, "");
+                case "global::Plasma.Variant[]":
+                    return new ValueCodec("AnyArray", type, "");
                 case "global::Plasma.TempHashedString":
                     return new ValueCodec("Hashed", type, "");
                 case "global::Plasma.Time":
@@ -661,6 +663,9 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     source.Append("__plCall.Any(").Append(index).Append(", ").Append(expression)
                         .AppendLine(", stackalloc byte[global::Plasma.EngineCall.StringScratchBytes]);");
                     break;
+                case "AnyArray":
+                    source.Append("__plCall.AnyArray(").Append(index).Append(", ").Append(expression).AppendLine(");");
+                    break;
                 case "Enum":
                     source.Append("__plCall.Int64(").Append(index).Append(", unchecked((long)").Append(expression).AppendLine("));");
                     break;
@@ -681,6 +686,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             "Bytes" => $"__plCall.ResultBytes<{codec.Type}>({index})",
             "Variant" => $"__plCall.ResultVariant({index})!",
             "Any" => $"__plCall.ResultAny({index})",
+            "AnyArray" => $"__plCall.ResultAnyArray({index})",
             "Enum" => $"unchecked(({codec.Type})__plCall.ResultInt64({index}))",
             _ => $"new {codec.Type}(__plCall.ResultObject(global::Plasma.NativeObjectKind.{codec.Detail}, {index}))",
         };
@@ -877,6 +883,8 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     return "string";
                 case "plVariant":
                     return "global::Plasma.Variant";
+                case "plVariantArray":
+                    return "global::Plasma.Variant[]";
                 case "plTempHashedString":
                     return "global::Plasma.TempHashedString";
                 case "plTime":
@@ -1037,7 +1045,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
 
             // A struct parameter can only default to default: an engine default of null or zero maps to it,
             // anything else leaves the parameter required.
-            if (type == "global::Plasma.Variant")
+            if (type is "global::Plasma.Variant" or "global::Plasma.Variant[]")
             {
                 return value.ValueKind == JsonValueKind.Null ||
                        (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double variantNumber) && variantNumber == 0.0)
