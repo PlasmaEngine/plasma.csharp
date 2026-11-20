@@ -483,9 +483,15 @@ public static unsafe partial class Bootstrap
                     }
                 }
                 invokingUpdate = true;
-                instance.Script.__DrainPostedActions();
+                instance.Script.__BeginUpdate(deltaTime);
             }
-            invoke(instance.Script, deltaTime);
+
+            // Async code started from a lifecycle method resumes in this script's Update.
+            using (ScriptContextScope context = instance.Script.__EnterContext())
+            {
+                invoke(instance.Script, deltaTime);
+            }
+
             *result = default;
             return CSharpStatus.Success;
         }
@@ -643,7 +649,11 @@ public static unsafe partial class Bootstrap
             object?[] values = [managedPayload];
             using ScriptExecutionContext.Scope scope =
                 ScriptExecutionContext.Enter(instance.Script.World);
-            message.Invoke(instance.Script, values);
+            using (ScriptContextScope context = instance.Script.__EnterContext())
+            {
+                message.Invoke(instance.Script, values);
+            }
+
             return CSharpStatus.Success;
         }
         catch (InvalidValueException exception)

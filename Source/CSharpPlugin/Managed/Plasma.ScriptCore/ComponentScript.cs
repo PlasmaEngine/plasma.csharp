@@ -3,7 +3,7 @@ using System.ComponentModel;
 namespace Plasma;
 
 /// <summary>Base class for scripts hosted by an existing native <c>plScriptComponent</c>.</summary>
-public abstract class ComponentScript
+public abstract partial class ComponentScript
 {
     public GameObject Owner { get; private set; }
     public World World { get; private set; }
@@ -36,6 +36,7 @@ public abstract class ComponentScript
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void __EnableUpdateDispatch(bool enabled)
     {
+        _updateDispatch = enabled;
         lock (_posted) _acceptPostedActions = enabled && !_lifetime.IsCancellationRequested;
     }
 
@@ -95,6 +96,7 @@ public abstract class ComponentScript
         }
 
         // Each step runs even when an earlier one throws, so the native context is always released.
+        DetachStep("timers and waits", () => _scheduler?.Close());
         DetachStep("lifetime cancellation", _lifetime.Cancel);
         DetachStep("save game clients", () => SaveGame.DisposeOwned(this));
         DetachStep("settings clients", () => GameSettings.DisposeOwned(this));
