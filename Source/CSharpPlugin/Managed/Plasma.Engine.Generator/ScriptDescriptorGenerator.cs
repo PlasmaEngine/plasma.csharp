@@ -99,12 +99,57 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor LifecycleNeverCalled = new(
+        "PLCS010",
+        "Lifecycle method is never called",
+        "'{0}.{1}' does not override ComponentScript.{1}, so the engine never calls it; declare it as 'public override {2}'",
+        "Plasma.Scripting",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor MetadataWithoutExpose = new(
+        "PLCS011",
+        "Inspector attribute without [Expose]",
+        "'{0}.{1}' has [{2}] but no [Expose], so it does not appear in the editor; add [Expose] or remove [{2}]",
+        "Plasma.Scripting",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly DiagnosticDescriptor MetadataWrongType = new(
+        "PLCS012",
+        "Inspector attribute does not fit the member type",
+        "[{2}] on '{0}.{1}' has no effect: it applies to {3}",
+        "Plasma.Scripting",
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    private static readonly (string Name, string Signature)[] LifecycleMethods =
+    [
+        ("Initialize", "void Initialize()"),
+        ("Deinitialize", "void Deinitialize()"),
+        ("OnActivated", "void OnActivated()"),
+        ("OnDeactivated", "void OnDeactivated()"),
+        ("OnSimulationStarted", "void OnSimulationStarted()"),
+        ("Update", "void Update(Time deltaTime)"),
+    ];
+
+    private static readonly string[] InspectorAttributes =
+    [
+        "Plasma.RangeAttribute",
+        "Plasma.CategoryAttribute",
+        "Plasma.DisplayNameAttribute",
+        "Plasma.TooltipAttribute",
+        "Plasma.AssetAttribute",
+        "Plasma.FormerlySerializedAsAttribute",
+    ];
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<INamedTypeSymbol> scripts = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 ScriptAttributeName,
-                static (node, _) => node is ClassDeclarationSyntax,
+                // Structs and records too, so a [PlasmaScript] on the wrong kind of type is reported, not ignored.
+                static (node, _) => node is TypeDeclarationSyntax,
                 static (attributeContext, _) => (INamedTypeSymbol)attributeContext.TargetSymbol);
 
         IncrementalValuesProvider<ManifestMessageCatalog> manifestMessages =
@@ -141,11 +186,17 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         string sourceRoot)
     {
         var manifestMessages = new Dictionary<string, string>(StringComparer.Ordinal);
+        var manifestComponents = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (ManifestMessageCatalog catalog in manifestCatalogs)
         {
             foreach (KeyValuePair<string, string> message in catalog.Messages)
             {
                 manifestMessages[message.Key] = message.Value;
+            }
+
+            foreach (KeyValuePair<string, string> component in catalog.Components)
+            {
+                manifestComponents[component.Key] = component.Value;
             }
         }
 
@@ -156,7 +207,7 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         var validScripts = new List<ScriptModel>(uniqueScripts.Length);
         foreach (INamedTypeSymbol script in uniqueScripts)
         {
-            ScriptModel? model = BuildModel(context, script, manifestMessages, sourceRoot);
+            ScriptModel? model = BuildModel(context, script, manifestMessages, manifestComponents, sourceRoot);
             if (model is not null)
             {
                 validScripts.Add(model);
@@ -189,14 +240,17 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         SourceProductionContext context,
         INamedTypeSymbol script,
         IReadOnlyDictionary<string, string> manifestMessages,
+        IReadOnlyDictionary<string, string> manifestComponents,
         string sourceRoot)
     {
         bool valid = true;
         Location location = script.Locations.FirstOrDefault() ?? Location.None;
 
+        ReportMemberMistakes(context, script);
+
         bool isPartial = script.DeclaringSyntaxReferences
             .Select(static reference => reference.GetSyntax())
-            .OfType<ClassDeclarationSyntax>()
+            .OfType<TypeDeclarationSyntax>()
             .Any(static declaration => declaration.Modifiers.Any(SyntaxKind.PartialKeyword));
         if (!isPartial)
         {
@@ -276,7 +330,7 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
          .ToArray();
 
         var fields = new List<FieldModel>();
-        foreach (ISymbol member in script.GetMembers()
+        foreach (ISymbol member in GetScriptMembers(script)
                      .Where(static member => FindAttribute(member, ExposeAttributeName) is not null)
                      .OrderBy(static member => member.Name, StringComparer.Ordinal))
         {
@@ -340,8 +394,18 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
                 invalidReason = "only fields and properties can be exposed";
             }
 
+            // An engine component type: generated by the binding generator, so unresolved here, and known
+            // from the manifest. The editor shows an object picker; the script gets that object's component.
+            string? componentNativeType = null;
+            if (invalidReason is null && valueType is not null && valueType.TypeKind == TypeKind.Error &&
+                manifestComponents.TryGetValue(valueType.Name, out string? nativeComponent))
+            {
+                componentNativeType = nativeComponent;
+            }
+
             if (invalidReason is null &&
                 valueType is not null &&
+                componentNativeType is null &&
                 !IsSupportedExposedType(valueType))
             {
                 invalidReason =
@@ -360,11 +424,22 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
                 continue;
             }
 
+            IReadOnlyDictionary<string, string> metadata = GetEditorMetadata(member);
+            string qualifiedType = valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (componentNativeType is not null)
+            {
+                metadata = new SortedDictionary<string, string>(metadata.ToDictionary(static pair => pair.Key, static pair => pair.Value), StringComparer.Ordinal)
+                {
+                    ["Reference.Component"] = componentNativeType,
+                };
+                qualifiedType = "global::Plasma.@" + valueType.Name;
+            }
+
             fields.Add(new FieldModel(
                 member.Name,
-                valueType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                qualifiedType,
                 isField,
-                GetEditorMetadata(member)));
+                metadata));
         }
 
         var messages = new List<MessageModel>();
@@ -382,12 +457,16 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             }
         }
         var handledMessages = new HashSet<string>(StringComparer.Ordinal);
-        foreach (IMethodSymbol method in script.GetMembers()
+        foreach (IMethodSymbol method in GetScriptMembers(script)
                      .OfType<IMethodSymbol>()
                      .Where(static method => FindAttribute(method, MessageAttributeName) is not null)
                      .OrderBy(static method => method.Name, StringComparer.Ordinal))
         {
+            // The generated dispatcher lives in the script class, so a base class's private handler is out of its reach.
+            bool reachable = SymbolEqualityComparer.Default.Equals(method.ContainingType, script) ||
+                             method.DeclaredAccessibility != Accessibility.Private;
             bool signatureValid =
+                reachable &&
                 !method.IsStatic &&
                 method.ReturnsVoid &&
                 method.Parameters.Length == 1 &&
@@ -540,6 +619,31 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         }
 
         return sourceFile.Replace('\\', '/');
+    }
+
+    /// <summary>Members of the script and of its base classes below ComponentScript, most derived first.
+    /// A base member hidden or overridden by a more derived one (same name, same parameter types) is skipped.</summary>
+    private static IEnumerable<ISymbol> GetScriptMembers(INamedTypeSymbol script)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (INamedTypeSymbol? current = script;
+             current is not null &&
+             current.SpecialType != SpecialType.System_Object &&
+             current.ToDisplayString() != ComponentScriptName;
+             current = current.BaseType)
+        {
+            foreach (ISymbol member in current.GetMembers())
+            {
+                string key = member is IMethodSymbol method
+                    ? method.Name + "(" + string.Join(",", method.Parameters.Select(static p => p.Type.ToDisplayString())) + ")"
+                    : member.Name;
+
+                if (seen.Add(key))
+                {
+                    yield return member;
+                }
+            }
+        }
     }
 
     private static LifecycleModel? CreateLifecycleModel(
@@ -700,6 +804,63 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             return null;
         }
     }
+
+    /// <summary>Warnings for code that compiles but silently does nothing: lifecycle methods that do not
+    /// override, and inspector attributes that the editor never sees or cannot apply.</summary>
+    private static void ReportMemberMistakes(SourceProductionContext context, INamedTypeSymbol script)
+    {
+        foreach (ISymbol member in script.GetMembers())
+        {
+            Location memberLocation = member.Locations.FirstOrDefault() ?? Location.None;
+
+            if (member is IMethodSymbol { MethodKind: MethodKind.Ordinary, IsOverride: false, IsStatic: false } method)
+            {
+                // Only shapes that look like the lifecycle method: Update() or Update(x), Initialize(); an
+                // unrelated overload such as Initialize(int) is a helper, not a mistake.
+                int maxParameters = method.Name == "Update" ? 1 : 0;
+                foreach ((string name, string signature) in LifecycleMethods)
+                {
+                    if (method.Name == name && method.Parameters.Length <= maxParameters)
+                        context.ReportDiagnostic(Diagnostic.Create(LifecycleNeverCalled, memberLocation, script.Name, name, signature));
+                }
+            }
+
+            ITypeSymbol? memberType = member switch
+            {
+                IFieldSymbol field => field.Type,
+                IPropertySymbol property => property.Type,
+                _ => null,
+            };
+            if (memberType is null)
+                continue;
+
+            bool exposed = FindAttribute(member, ExposeAttributeName) is not null;
+            foreach (string attributeName in InspectorAttributes)
+            {
+                if (FindAttribute(member, attributeName) is null)
+                    continue;
+
+                string shortName = attributeName.Substring("Plasma.".Length, attributeName.Length - "Plasma.".Length - "Attribute".Length);
+                if (!exposed)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(MetadataWithoutExpose, memberLocation, script.Name, member.Name, shortName));
+                    continue;
+                }
+
+                if (attributeName == "Plasma.RangeAttribute" && !RangeApplies(memberType))
+                    context.ReportDiagnostic(Diagnostic.Create(MetadataWrongType, memberLocation, script.Name, member.Name, shortName, "numbers, Time and Angle"));
+                else if (attributeName == "Plasma.AssetAttribute" && memberType.SpecialType != SpecialType.System_String)
+                    context.ReportDiagnostic(Diagnostic.Create(MetadataWrongType, memberLocation, script.Name, member.Name, shortName, "string members"));
+            }
+        }
+    }
+
+    private static bool RangeApplies(ITypeSymbol type) =>
+        type.SpecialType is
+            SpecialType.System_Byte or SpecialType.System_SByte or SpecialType.System_Int16 or SpecialType.System_UInt16 or
+            SpecialType.System_Int32 or SpecialType.System_UInt32 or SpecialType.System_Int64 or SpecialType.System_UInt64 or
+            SpecialType.System_Single or SpecialType.System_Double ||
+        type.ToDisplayString() is "Plasma.Time" or "Plasma.Angle";
 
     private static AttributeData? FindAttribute(ISymbol symbol, string metadataName) =>
         symbol.GetAttributes().FirstOrDefault(attribute =>
@@ -887,9 +1048,13 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             .Append("\", typeof(")
             .Append(field.QualifiedType)
             .AppendLine("),");
-        source.Append("                                new ")
+        // One default instance per script type, shared by all of its fields: a script whose constructor or
+        // field initializers have side effects runs them once, not once per exposed field.
+        source.Append("                                global::Plasma.ScriptDefaults<")
             .Append(script.QualifiedName)
-            .Append("().")
+            .Append(">.Get(static () => new ")
+            .Append(script.QualifiedName)
+            .Append("()).")
             .Append(identifier)
             .AppendLine(",");
         source.Append("                                static baseInstance => ((")
@@ -1028,48 +1193,86 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
         return result.ToString();
     }
 
+    /// <summary>Engine messages and component types from the binding manifest, by managed name. The binding
+    /// generator's output is invisible to this generator, so the manifest is how it knows those types exist.</summary>
     private sealed class ManifestMessageCatalog
     {
-        private ManifestMessageCatalog(IReadOnlyDictionary<string, string> messages)
+        private ManifestMessageCatalog(IReadOnlyDictionary<string, string> messages, IReadOnlyDictionary<string, string> components)
         {
             Messages = messages;
+            Components = components;
         }
 
         public IReadOnlyDictionary<string, string> Messages { get; }
+        public IReadOnlyDictionary<string, string> Components { get; }
 
         public static ManifestMessageCatalog Parse(string? json)
         {
             var messages = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var components = new SortedDictionary<string, string>(StringComparer.Ordinal);
             if (string.IsNullOrWhiteSpace(json))
             {
-                return new ManifestMessageCatalog(messages);
+                return new ManifestMessageCatalog(messages, components);
             }
 
             try
             {
                 using JsonDocument document = JsonDocument.Parse(json!);
-                if (!document.RootElement.TryGetProperty("messages", out JsonElement entries))
+                if (document.RootElement.TryGetProperty("messages", out JsonElement entries))
                 {
-                    return new ManifestMessageCatalog(messages);
-                }
-
-                foreach (JsonElement entry in entries.EnumerateArray())
-                {
-                    if (entry.TryGetProperty("typeName", out JsonElement typeNameElement) &&
-                        typeNameElement.ValueKind == JsonValueKind.String &&
-                        typeNameElement.GetString() is string nativeName &&
-                        nativeName.Length > 0)
+                    foreach (JsonElement entry in entries.EnumerateArray())
                     {
-                        messages[ManagedTypeName(nativeName)] = nativeName;
+                        if (entry.TryGetProperty("typeName", out JsonElement typeNameElement) &&
+                            typeNameElement.ValueKind == JsonValueKind.String &&
+                            typeNameElement.GetString() is string nativeName &&
+                            nativeName.Length > 0)
+                        {
+                            messages[ManagedTypeName(nativeName)] = nativeName;
+                        }
                     }
                 }
+
+                if (document.RootElement.TryGetProperty("types", out JsonElement types))
+                    CollectComponents(types, components);
             }
             catch (JsonException)
             {
                 // BindingManifestGenerator owns malformed-manifest diagnostics.
             }
 
-            return new ManifestMessageCatalog(messages);
+            return new ManifestMessageCatalog(messages, components);
+        }
+
+        private static void CollectComponents(JsonElement types, IDictionary<string, string> components)
+        {
+            var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+            var visible = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonElement type in types.EnumerateArray())
+            {
+                string name = type.TryGetProperty("nativeName", out JsonElement n) ? n.GetString() ?? "" : "";
+                if (name.Length == 0)
+                    continue;
+
+                parents[name] = type.TryGetProperty("parentNativeName", out JsonElement p) ? p.GetString() ?? "" : "";
+                bool hidden = type.TryGetProperty("hidden", out JsonElement h) && h.ValueKind == JsonValueKind.True;
+                bool excluded = type.TryGetProperty("excludedFromScript", out JsonElement e) && e.ValueKind == JsonValueKind.True;
+                bool extension = type.TryGetProperty("scriptExtensionName", out JsonElement x) && (x.GetString() ?? "").Length > 0;
+                if (!hidden && !excluded && !extension)
+                    visible.Add(name);
+            }
+
+            foreach (string name in visible)
+            {
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                for (string current = name; current.Length > 0 && seen.Add(current); current = parents.TryGetValue(current, out string? parent) ? parent : "")
+                {
+                    if (current == "plComponent")
+                    {
+                        components[ManagedTypeName(name)] = name;
+                        break;
+                    }
+                }
+            }
         }
     }
 

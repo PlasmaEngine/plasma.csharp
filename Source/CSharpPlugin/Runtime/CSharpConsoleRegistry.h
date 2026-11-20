@@ -36,6 +36,7 @@ class PL_CSHARPPLUGIN_DLL plCSharpConsoleFunction : private plCSharpConsoleFunct
 public:
   plCSharpConsoleFunction(plStringView sName, plStringView sHelp, plUInt64 uiGeneration,
     plUInt64 uiCommandId, plDynamicArray<plVariantType::Enum>&& parameterTypes);
+  ~plCSharpConsoleFunction();
 
   virtual plUInt32 GetNumParameters() const override;
   virtual plVariant::Type::Enum GetParameterType(plUInt32 uiParam) const override;
@@ -45,6 +46,8 @@ private:
   plUInt64 m_uiGeneration = 0;
   plUInt64 m_uiCommandId = 0;
   plDynamicArray<plVariantType::Enum> m_ParameterTypes;
+  /// Native objects handed to managed code while the command ran; released with the generation.
+  plDynamicArray<plCSharpObjectHandle> m_BorrowedHandles;
 };
 
 /// One [ConsoleTool] class, given a window by the engine console.

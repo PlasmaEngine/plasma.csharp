@@ -37,11 +37,13 @@ The .NET runtime itself is an optional component. Install it and the package is 
 	// ---- binaries -------------------------------------------------------------
 	// The managed payload is a build output, so it is matched by glob rather than
 	// enumerated - listing each assembly would go stale the first time one is added.
+	// This list is what a game export copies: CSharp/Tools (the compiler) and
+	// CSharp/M0Game (the generator and test game) are editor-only and stay out.
 	// DotNet is deliberately NOT here: it is its own optional component below.
 	string %EditorPlugins{"plEditorPluginCSharp"}
 	string %EditorEnginePlugins{}
 	string %RuntimePlugins{"plCSharpPlugin"}
-	string %PackageDependencies{"nethost.dll", "CSharp/*"}
+	string %PackageDependencies{"nethost.dll", "CSharp/Plasma.*"}
 
 	// ---- dependencies ---------------------------------------------------------
 	// None. The plugin binds to plCore and the editor framework, both part of the

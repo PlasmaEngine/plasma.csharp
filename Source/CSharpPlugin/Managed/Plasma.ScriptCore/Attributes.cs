@@ -73,6 +73,13 @@ public sealed class FormerlySerializedAsAttribute(string name) : Attribute
     public string Name { get; } = name;
 }
 
+/// <summary>Keeps this member's value when the script's code is fully reloaded while the game runs.</summary>
+/// <remarks>Values travel as JSON, matched by member name. A member whose type changed keeps its default.
+/// Mark game values (scores, timers, positions, plain data); never native handles, delegates or tasks.
+/// A script that implements <see cref="IScriptReloadState"/> itself is left to do so.</remarks>
+[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, Inherited = true)]
+public sealed class KeepOnReloadAttribute : Attribute;
+
 /// <summary>Marks a value type emitted from a reflected native message descriptor.</summary>
 [AttributeUsage(AttributeTargets.Struct, Inherited = false)]
 [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]

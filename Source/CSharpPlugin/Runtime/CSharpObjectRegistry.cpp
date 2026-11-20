@@ -4,6 +4,8 @@
 #include <Core/World/Component.h>
 #include <Core/World/GameObject.h>
 #include <Core/World/World.h>
+#include <Core/World/WorldModule.h>
+#include <Foundation/Algorithm/HashingUtils.h>
 
 namespace
 {
@@ -11,6 +13,22 @@ namespace
 
   thread_local plWorld* s_pCurrentScriptWorld = nullptr;
   thread_local plDynamicArray<plCSharpObjectHandle>* s_pBorrowedHandles = nullptr;
+  thread_local plCSharpExecutionScope* s_pCurrentScope = nullptr;
+
+  void PruneDeadHandles(plDynamicArray<plCSharpObjectHandle>& inout_handles)
+  {
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+    for (plUInt32 i = inout_handles.GetCount(); i-- > 0;)
+    {
+      void* pObject = nullptr;
+      const plRTTI* pType = nullptr;
+      if (registry.ResolveObject(inout_handles[i], pObject, pType) == plCSharpStatus::Success)
+        continue;
+
+      registry.UnregisterObject(inout_handles[i]);
+      inout_handles.RemoveAtAndSwap(i);
+    }
+  }
 } // namespace
 
 plCSharpObjectRegistry& plCSharpObjectRegistry::GetSingleton()
@@ -30,32 +48,28 @@ plCSharpObjectHandle plCSharpObjectRegistry::RegisterObject(
 
   PL_LOCK(m_Mutex);
 
-  for (auto it = m_Entries.GetIterator(); it.IsValid(); ++it)
+  // Reuse the object's current entry when it still resolves to this object. A stale entry (the
+  // object died and the address was reused) is left to its holders and replaced in the index.
+  const plUInt64 uiIdentity = ComputeIdentity(pObject, pType, kind);
+  if (const plUInt64* pExistingId = m_Identities.GetValue(uiIdentity))
   {
-    Entry& existing = it.Value();
-    if (existing.m_pObject != pObject || existing.m_pType != pType ||
-        existing.m_Kind != kind)
-    {
-      continue;
-    }
-
-    // Resolve only the matching identity. Scanning and resolving every global
-    // entry here could touch unrelated worlds without their access marker and
-    // made registration O(all live handles plus cross-world lookups).
+    Entry* pExisting = nullptr;
     void* pExistingObject = nullptr;
-    if (TryResolveEntry(existing, pExistingObject) &&
-        pExistingObject == pObject)
+    if (m_Entries.TryGetValue(*pExistingId, pExisting) && pExisting->m_pObject == pObject &&
+        pExisting->m_pType == pType && pExisting->m_Kind == kind &&
+        TryResolveEntry(*pExisting, pExistingObject) && pExistingObject == pObject)
     {
-      ++existing.m_uiReferenceCount;
+      ++pExisting->m_uiReferenceCount;
       plCSharpObjectHandle handle;
-      handle.m_uiValue = it.Key();
-      handle.m_uiGeneration = existing.m_uiGeneration;
+      handle.m_uiValue = *pExistingId;
+      handle.m_uiGeneration = pExisting->m_uiGeneration;
       handle.m_uiKind = static_cast<plUInt32>(kind);
       return handle;
     }
   }
 
   const plUInt64 uiId = m_uiNextId++;
+  m_Identities[uiIdentity] = uiId;
   Entry& entry = m_Entries[uiId];
   entry.m_pObject = pObject;
   entry.m_pType = pType;
@@ -79,6 +93,20 @@ plCSharpObjectHandle plCSharpObjectRegistry::RegisterObject(
     auto* pComponent = static_cast<plComponent*>(pObject);
     entry.m_pWorld = pComponent->GetWorld();
     entry.m_hComponent = pComponent->GetHandle();
+  }
+  else
+  {
+    // Other objects are only reachable as raw pointers. Tie them to the world they were obtained in
+    // (a world module's own world), so they stop resolving once that world is destroyed.
+    plWorld* pWorld = plCSharpExecutionScope::GetCurrentWorld();
+    if (pType != nullptr && pType->IsDerivedFrom<plWorldModule>())
+      pWorld = static_cast<plWorldModule*>(pObject)->GetWorld();
+
+    if (pWorld != nullptr)
+    {
+      entry.m_pWorld = pWorld;
+      entry.m_uiWorldIndex = pWorld->GetIndex();
+    }
   }
 
   plCSharpObjectHandle handle;
@@ -111,10 +139,30 @@ void plCSharpObjectRegistry::UnregisterObject(plCSharpObjectHandle handle)
   // address reuse to make an old managed handle resolve to a new object.
   if (pEntry->m_uiReferenceCount == 0)
   {
+    const plUInt64 uiIdentity = ComputeIdentity(pEntry->m_pObject, pEntry->m_pType, pEntry->m_Kind);
+    if (const plUInt64* pIndexed = m_Identities.GetValue(uiIdentity); pIndexed != nullptr && *pIndexed == handle.m_uiValue)
+      m_Identities.Remove(uiIdentity);
+
     m_Entries.Remove(handle.m_uiValue);
     if (m_Entries.IsEmpty())
+    {
       m_Entries.Compact();
+      m_Identities.Compact();
+    }
   }
+}
+
+plUInt64 plCSharpObjectRegistry::ComputeIdentity(const void* pObject, const plRTTI* pType, plCSharpNativeObjectKind kind)
+{
+  // A hash collision only costs a lookup miss: RegisterObject compares the full identity.
+  const struct
+  {
+    const void* m_pObject;
+    const plRTTI* m_pType;
+    plUInt64 m_uiKind;
+  } identity = {pObject, pType, static_cast<plUInt64>(kind)};
+
+  return plHashingUtils::xxHash64(&identity, sizeof(identity));
 }
 
 plCSharpStatus plCSharpObjectRegistry::ValidateObject(
@@ -233,6 +281,12 @@ bool plCSharpObjectRegistry::TryResolveEntry(
     return true;
   }
 
+  if (entry.m_pWorld != nullptr &&
+      (entry.m_uiWorldIndex >= plWorld::GetWorldCount() || plWorld::GetWorld(entry.m_uiWorldIndex) != entry.m_pWorld))
+  {
+    return false;
+  }
+
   out_pObject = entry.m_pObject;
   return out_pObject != nullptr;
 }
@@ -241,15 +295,33 @@ plCSharpExecutionScope::plCSharpExecutionScope(plWorld* pWorld,
   plDynamicArray<plCSharpObjectHandle>* pBorrowedHandles)
   : m_pPreviousWorld(s_pCurrentScriptWorld)
   , m_pPreviousBorrowedHandles(s_pBorrowedHandles)
+  , m_pPreviousScope(s_pCurrentScope)
 {
   s_pCurrentScriptWorld = pWorld;
   s_pBorrowedHandles = pBorrowedHandles;
+  s_pCurrentScope = this;
 }
 
 plCSharpExecutionScope::~plCSharpExecutionScope()
 {
   s_pCurrentScriptWorld = m_pPreviousWorld;
   s_pBorrowedHandles = m_pPreviousBorrowedHandles;
+  s_pCurrentScope = m_pPreviousScope;
+}
+
+void plCSharpExecutionScope::ForgetBorrowedHandles(const plDynamicArray<plCSharpObjectHandle>* pBorrowedHandles)
+{
+  if (pBorrowedHandles == nullptr)
+    return;
+
+  if (s_pBorrowedHandles == pBorrowedHandles)
+    s_pBorrowedHandles = nullptr;
+
+  for (plCSharpExecutionScope* pScope = s_pCurrentScope; pScope != nullptr; pScope = pScope->m_pPreviousScope)
+  {
+    if (pScope->m_pPreviousBorrowedHandles == pBorrowedHandles)
+      pScope->m_pPreviousBorrowedHandles = nullptr;
+  }
 }
 
 plWorld* plCSharpExecutionScope::GetCurrentWorld()
@@ -273,6 +345,10 @@ bool plCSharpExecutionScope::TrackBorrowedHandle(plCSharpObjectHandle handle)
       return true;
     }
   }
+
+  // A full list usually holds objects that have since been deleted; release those before refusing.
+  if (s_pBorrowedHandles->GetCount() >= s_uiMaxBorrowedHandlesPerInstance)
+    PruneDeadHandles(*s_pBorrowedHandles);
 
   if (s_pBorrowedHandles->GetCount() >= s_uiMaxBorrowedHandlesPerInstance)
   {

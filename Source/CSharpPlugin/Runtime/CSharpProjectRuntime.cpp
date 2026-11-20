@@ -78,6 +78,8 @@ plResult plCSharpProjectRuntime::AcquireGeneration(
   plStringView sAssemblyPath, plStringView sShadowCopyRoot,
   plCSharpGenerationLease& out_lease, plString& out_sDescriptorJson)
 {
+  PL_PROFILE_SCOPE("CSharp.AcquireGeneration");
+
   out_lease = {};
   out_sDescriptorJson.Clear();
 

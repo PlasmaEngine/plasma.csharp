@@ -82,6 +82,7 @@ public static unsafe class ReflectedCall
                 nativeArguments[index] = ToNative(arguments[index], argumentTypes[index], leases);
             }
 
+            NativeValue[] sentArguments = arguments.Length == 0 ? [] : (NativeValue[])nativeArguments.Clone();
             NativeCallStatus status =
                 NativeBridge.InvokeReflected(functionId, target, nativeArguments, out result);
             if (status != NativeCallStatus.Success)
@@ -91,9 +92,13 @@ public static unsafe class ReflectedCall
                     (int)status);
             }
 
+            // The engine rewrites only out and inout slots; every other argument keeps the caller's object.
             for (int index = 0; index < arguments.Length; ++index)
             {
-                arguments[index] = FromNative(nativeArguments[index], argumentTypes[index]);
+                if (!SameValue(nativeArguments[index], sentArguments[index]))
+                {
+                    arguments[index] = FromNative(nativeArguments[index], argumentTypes[index]);
+                }
             }
 
             return resultType == typeof(void) ? null : FromNative(result, resultType);
@@ -120,7 +125,12 @@ public static unsafe class ReflectedCall
         }
     }
 
-    private static string DescribeFailure(
+    internal static NativeValue ToNativeValue(object? value, Type expectedType, ICollection<IDisposable> leases) =>
+        ToNative(value, expectedType, leases);
+
+    internal static object? FromNativeValue(NativeValue value, Type expectedType) => FromNative(value, expectedType);
+
+    internal static string DescribeFailure(
         string apiName,
         ulong functionId,
         NativeCallStatus status)
@@ -272,7 +282,10 @@ public static unsafe class ReflectedCall
             var lease = new PinnedBytes(bytes);
             Marshal.StructureToPtr(value, lease.Pointer, fDeleteOld: false);
             leases.Add(lease);
-            return lease.AsValue(NativeValueKind.ByteSpan);
+
+            NativeValue bytesValue = lease.AsValue(NativeValueKind.ByteSpan);
+            bytesValue.Flags |= (NativeValueFlags)((uint)ByteSpanTypeFor(type) << ByteSpanTypeShift);
+            return bytesValue;
         }
 
         throw new PlasmaException($"Type '{type}' cannot cross the Plasma native boundary.");
@@ -286,6 +299,11 @@ public static unsafe class ReflectedCall
             return expectedType.IsValueType && Nullable.GetUnderlyingType(expectedType) is null
                 ? Activator.CreateInstance(expectedType)
                 : null;
+        }
+
+        if (type == typeof(object))
+        {
+            return FromUntypedNative(value);
         }
 
         object primitive = value.Kind switch
@@ -303,8 +321,7 @@ public static unsafe class ReflectedCall
                 ObjectKindFromFlags(value.Flags) is { } kind
                     ? kind
                     : NativeKindFor(type)),
-            NativeValueKind.ByteSpan => Marshal.PtrToStructure((nint)value.Payload0, type)
-                ?? throw new PlasmaException($"Could not decode native value as '{type}'."),
+            NativeValueKind.ByteSpan => ReadBytes(value, type),
             _ => throw new PlasmaException($"Native value kind '{value.Kind}' is unsupported."),
         };
 
@@ -332,6 +349,88 @@ public static unsafe class ReflectedCall
             ? primitive
             : Convert.ChangeType(primitive, type, CultureInfo.InvariantCulture);
     }
+
+    // Variant (object) slots: objects come back as their wrapper, byte spans by their value-type tag.
+    private static object? FromUntypedNative(NativeValue value)
+    {
+        if (value.Kind == NativeValueKind.ObjectHandle)
+        {
+            NativeObjectKind kind = ObjectKindFromFlags(value.Flags) ?? NativeObjectKind.ReflectedObject;
+            var native = new NativeObject(value.Payload0, value.Payload1, kind);
+            return kind switch
+            {
+                NativeObjectKind.World => new World(native),
+                NativeObjectKind.GameObject => new GameObject(native),
+                NativeObjectKind.Component => new Component(native),
+                _ => native,
+            };
+        }
+
+        if (value.Kind == NativeValueKind.ByteSpan)
+        {
+            Type? tagged = TypeForByteSpan((NativeByteSpanType)(((uint)value.Flags & (uint)NativeValueFlags.ByteSpanTypeMask) >> ByteSpanTypeShift));
+            if (tagged is null)
+            {
+                throw new PlasmaException("The engine returned a value of a type the C# bridge cannot represent as 'object'.");
+            }
+
+            return ReadBytes(value, tagged);
+        }
+
+        return value.Kind switch
+        {
+            NativeValueKind.Boolean => value.Payload0 != 0,
+            NativeValueKind.Int64 => unchecked((long)value.Payload0),
+            NativeValueKind.UInt64 => value.Payload0,
+            NativeValueKind.Double => BitConverter.Int64BitsToDouble(unchecked((long)value.Payload0)),
+            NativeValueKind.Utf8String => Marshal.PtrToStringUTF8((nint)value.Payload0, checked((int)value.Payload1)) ?? string.Empty,
+            _ => throw new PlasmaException($"Native value kind '{value.Kind}' is unsupported."),
+        };
+    }
+
+    // A byte span is stored either behind its pointer or, for small tagged values, in the payload words.
+    private static object ReadBytes(NativeValue value, Type type)
+    {
+        int size = Marshal.SizeOf(type);
+        if ((value.Flags & NativeValueFlags.InlineBytes) != 0 && size <= 16)
+            return Marshal.PtrToStructure((nint)(&value.Payload0), type)!;
+
+        if (value.Payload0 == 0 || value.Payload1 != (ulong)size)
+            throw new PlasmaException($"Could not decode native value as '{type}'.");
+
+        return Marshal.PtrToStructure((nint)value.Payload0, type)!;
+    }
+
+    private static bool SameValue(in NativeValue a, in NativeValue b) =>
+        a.Kind == b.Kind && a.Flags == b.Flags && a.Payload0 == b.Payload0 && a.Payload1 == b.Payload1;
+
+    private const int ByteSpanTypeShift = 16;
+
+    private static NativeByteSpanType ByteSpanTypeFor(Type type) =>
+        type == typeof(Time) ? NativeByteSpanType.Time :
+        type == typeof(Angle) ? NativeByteSpanType.Angle :
+        type == typeof(Vec2) ? NativeByteSpanType.Vec2 :
+        type == typeof(Vec2U32) ? NativeByteSpanType.Vec2U32 :
+        type == typeof(Vec3) ? NativeByteSpanType.Vec3 :
+        type == typeof(Vec4) ? NativeByteSpanType.Vec4 :
+        type == typeof(Quat) ? NativeByteSpanType.Quat :
+        type == typeof(Color) ? NativeByteSpanType.Color :
+        type == typeof(Transform) ? NativeByteSpanType.Transform :
+        NativeByteSpanType.None;
+
+    private static Type? TypeForByteSpan(NativeByteSpanType tag) => tag switch
+    {
+        NativeByteSpanType.Time => typeof(Time),
+        NativeByteSpanType.Angle => typeof(Angle),
+        NativeByteSpanType.Vec2 => typeof(Vec2),
+        NativeByteSpanType.Vec2U32 => typeof(Vec2U32),
+        NativeByteSpanType.Vec3 => typeof(Vec3),
+        NativeByteSpanType.Vec4 => typeof(Vec4),
+        NativeByteSpanType.Quat => typeof(Quat),
+        NativeByteSpanType.Color => typeof(Color),
+        NativeByteSpanType.Transform => typeof(Transform),
+        _ => null,
+    };
 
     private static NativeObject? TryGetWrappedNativeObject(object value)
     {

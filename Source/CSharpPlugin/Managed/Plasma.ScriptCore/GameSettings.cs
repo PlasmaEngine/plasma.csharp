@@ -54,7 +54,7 @@ public sealed class GameSettingsState
 /// <summary>Client of the application-owned service. Apply queues work at a safe native frame
 /// boundary. Call Update from your script update to receive state events. Dispose on menu close
 /// to cancel an owned display preview. The native timeout continues even without Update.</summary>
-public sealed class GameSettings : IDisposable
+public sealed class GameSettings : IDisposable, IOwnedService
 {
     private static readonly HashSet<GameSettings> Clients = [];
     private readonly ComponentScript? _owner;
@@ -64,7 +64,18 @@ public sealed class GameSettings : IDisposable
     private GameSettingsStatus? _lastStatus;
     public event Action<GameSettingsState>? StateChanged;
 
-    public GameSettings(ComponentScript? owner = null) { _owner = owner; Clients.Add(this); }
+    /// <summary>Created in a script callback, the client belongs to that script unless another <paramref name="owner"/>
+    /// is given: the script calls <see cref="Update"/> each frame and disposes it when it goes away.</summary>
+    public GameSettings(ComponentScript? owner = null)
+    {
+        _owner = owner ?? ComponentScript.Current;
+        _owner?.Own(this);
+        if (_owner is null)
+            Clients.Add(this);
+    }
+
+    void IOwnedService.Pump() => Update();
+
     public GameSettingsState Describe() => Command("Query");
     public GameSettingsDraft CreateDraft() => Draft(Describe().Confirmed);
     public GameSettingsDraft ResetToDefaults(string category = "") => Draft(Command("Query", new { Category = category }).Defaults);
@@ -90,11 +101,7 @@ public sealed class GameSettings : IDisposable
     {
         if (_disposed) return;
         try { if (_transaction != 0) Revert(); }
-        finally { _disposed = true; StateChanged = null; Clients.Remove(this); }
-    }
-    internal static void DisposeOwned(ComponentScript owner)
-    {
-        foreach (var c in Clients.Where(c => ReferenceEquals(c._owner, owner)).ToArray()) c.Dispose();
+        finally { _disposed = true; StateChanged = null; Clients.Remove(this); _owner?.Release(this); }
     }
     internal static void ResetAll()
     {

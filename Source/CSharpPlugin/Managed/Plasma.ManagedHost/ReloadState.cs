@@ -38,9 +38,12 @@ public static unsafe partial class Bootstrap
             if (buffer is null) return CSharpStatus.InvalidArgument;
             *buffer = default;
             if (!TryGetInstance(id, out Instance instance, out CSharpStatus status)) return status;
-            if (instance.Script is not IScriptReloadState state) return CSharpStatus.Unsupported;
             using ScriptExecutionContext.Scope scope = ScriptExecutionContext.Enter(instance.Script.World);
-            byte[] json = Encoding.UTF8.GetBytes(state.CaptureReloadState());
+            string? captured = instance.Script is IScriptReloadState state
+                ? state.CaptureReloadState()
+                : KeptMembers.Capture(instance.Script);
+            if (captured is null) return CSharpStatus.Unsupported;
+            byte[] json = Encoding.UTF8.GetBytes(captured);
             if (json.Length > 1024 * 1024) throw new InvalidDataException("C# reload state exceeds one MiB.");
             using var validated = JsonDocument.Parse(json);
             return AllocateBuffer(json, buffer);
@@ -55,11 +58,15 @@ public static unsafe partial class Bootstrap
         {
             if (json.Length > 1024 * 1024 || (json.Data is null && json.Length != 0)) return CSharpStatus.InvalidArgument;
             if (!TryGetInstance(id, out Instance instance, out CSharpStatus status)) return status;
-            if (instance.Script is not IScriptReloadState state) return CSharpStatus.Unsupported;
+            // The new code keeps no state: the old state is dropped rather than refusing the reload.
+            if (instance.Script is not IScriptReloadState && !KeptMembers.Has(instance.Script.GetType())) return CSharpStatus.Success;
             string text = Decode(json);
             using var validated = JsonDocument.Parse(text);
             using ScriptExecutionContext.Scope scope = ScriptExecutionContext.Enter(instance.Script.World);
-            state.RestoreReloadState(text);
+            if (instance.Script is IScriptReloadState state)
+                state.RestoreReloadState(text);
+            else
+                KeptMembers.Restore(instance.Script, validated.RootElement);
             return CSharpStatus.Success;
         }
         catch (Exception exception) { return Fail(CSharpStatus.ManagedException, exception); }

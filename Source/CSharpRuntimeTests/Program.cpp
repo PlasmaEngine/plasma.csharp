@@ -1,6 +1,9 @@
 #include <CSharpPlugin/Hosting/CSharpHost.h>
 #include <CSharpPlugin/Runtime/CSharpProjectRuntime.h>
 #include <CSharpPlugin/Runtime/CSharpInstance.h>
+#include <CSharpPlugin/Runtime/CSharpBindingRuntime.h>
+#include <CSharpPlugin/Runtime/CSharpObjectRegistry.h>
+#include <Core/Scripting/ScriptWorldModule.h>
 #include <Core/Scripting/ScriptComponent.h>
 #include <Core/World/World.h>
 #include <Core/Scripting/ScriptAttributes.h>
@@ -38,6 +41,230 @@ namespace
     const plVariant* value = reader.GetTopLevelObject().GetValue("Accumulator");
     return Require(value != nullptr && value->ConvertTo<double>() == expected, "Updated lifecycle dispatch and retained accumulator");
   }
+
+  /// A full borrowed-handle list releases handles of deleted objects before refusing a new one.
+  plResult TestFullHandleListPrunesDeletedObjects(plWorld& ref_world, plDynamicArray<plCSharpObjectHandle>& ref_borrowed)
+  {
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+
+    plDynamicArray<plGameObjectHandle> objects;
+    for (plUInt32 i = 0; i < 4096; ++i)
+    {
+      plGameObject* pObject = nullptr;
+      objects.PushBack(ref_world.CreateObject(plGameObjectDesc(), pObject));
+      const plCSharpObjectHandle handle = registry.RegisterObject(pObject, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
+      PL_SUCCEED_OR_RETURN(Require(plCSharpExecutionScope::TrackBorrowedHandle(handle), "Track a handle below the limit"));
+    }
+
+    for (const plGameObjectHandle& hObject : objects)
+      ref_world.DeleteObjectNow(hObject);
+
+    plGameObject* pLate = nullptr;
+    ref_world.CreateObject(plGameObjectDesc(), pLate);
+    const plCSharpObjectHandle late = registry.RegisterObject(pLate, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
+    PL_SUCCEED_OR_RETURN(Require(plCSharpExecutionScope::TrackBorrowedHandle(late), "A full list made room by releasing deleted objects"));
+    return Require(ref_borrowed.GetCount() == 1, "Only the live object's handle remains");
+  }
+
+  /// Native cost of one engine call from C#, through the same entry point managed code uses.
+  /// Reported, not asserted: timings depend on whatever else the machine is doing.
+  plResult MeasureEngineCalls()
+  {
+    plScriptBindingSnapshot snapshot;
+    PL_SUCCEED_OR_RETURN(plScriptBindingRegistry::CreateSnapshot(snapshot));
+
+    plUInt64 uiIsActive = 0;
+    for (const plScriptBindingFunctionDesc& function : snapshot.m_Functions)
+    {
+      if (function.m_sDeclaringTypeName == "plComponent" && function.m_sNativeName == "IsActive")
+        uiIsActive = function.m_uiStableId;
+    }
+
+    plUInt64 uiLocalPosition = 0;
+    for (const plScriptBindingPropertyDesc& property : snapshot.m_Properties)
+    {
+      if (property.m_sDeclaringTypeName == "plGameObject" && property.m_sNativeName == "LocalPosition")
+        uiLocalPosition = property.m_uiStableId;
+    }
+
+    PL_SUCCEED_OR_RETURN(Require(uiIsActive != 0 && uiLocalPosition != 0, "Find benchmark bindings"));
+
+    plWorldDesc worldDesc("CSharp engine call cost");
+    plWorld world(worldDesc);
+    PL_LOCK(world.GetWriteMarker());
+
+    // Dynamic, because the benchmark moves it.
+    plGameObjectDesc objectDesc;
+    objectDesc.m_bDynamic = true;
+    plGameObject* pObject = nullptr;
+    world.CreateObject(objectDesc, pObject);
+    plScriptComponent* pComponent = nullptr;
+    plScriptComponent::CreateComponent(pObject, pComponent);
+
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+    plDynamicArray<plCSharpObjectHandle> borrowed;
+    plCSharpExecutionScope scope(&world, &borrowed);
+    const plCSharpObjectHandle hObject = registry.RegisterObject(pObject, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
+    const plCSharpObjectHandle hComponent = registry.RegisterObject(pComponent, pComponent->GetDynamicRTTI(), plCSharpNativeObjectKind::Component);
+    PL_SCOPE_EXIT(registry.UnregisterObject(hObject); registry.UnregisterObject(hComponent););
+
+    auto& bindings = plCSharpBindingRuntime::GetSingleton();
+    PL_SUCCEED_OR_RETURN(bindings.Startup());
+    PL_SCOPE_EXIT(bindings.Shutdown());
+
+    const plVec3 position(1, 2, 3);
+    plCSharpValue positionValue;
+    positionValue.m_Kind = plCSharpValueKind::ByteSpan;
+    positionValue.m_Flags = plCSharpEncodeByteSpanType(plCSharpValueFlags::None, plCSharpByteSpanType::Vec3);
+    positionValue.m_uiPayload0 = reinterpret_cast<plUInt64>(&position);
+    positionValue.m_uiPayload1 = sizeof(position);
+
+    auto measure = [&](plStringView sName, plUInt64 uiId, plCSharpObjectHandle target, const plCSharpValue* pArguments, plUInt32 uiCount) -> plResult
+    {
+      constexpr plUInt32 uiCalls = 100000;
+      plCSharpValue result;
+      PL_SUCCEED_OR_RETURN(Require(bindings.InvokeReflected(uiId, target, pArguments, uiCount, &result) == plCSharpStatus::Success, sName));
+      bindings.ReleaseValue(&result);
+
+      const plTime start = plTime::Now();
+      for (plUInt32 i = 0; i < uiCalls; ++i)
+      {
+        bindings.InvokeReflected(uiId, target, pArguments, uiCount, &result);
+        bindings.ReleaseValue(&result);
+      }
+
+      const double fNanoseconds = (plTime::Now() - start).GetNanoseconds() / uiCalls;
+      plLog::Info("Engine call cost, native side: {} {} ns per call", sName, plArgF(fNanoseconds, 1));
+      return PL_SUCCESS;
+    };
+
+    // Registering an object must not get slower as more objects are registered.
+    {
+      plDynamicArray<plGameObject*> objects;
+      for (plUInt32 i = 0; i < 20000; ++i)
+      {
+        plGameObject* pExtra = nullptr;
+        world.CreateObject(plGameObjectDesc(), pExtra);
+        objects.PushBack(pExtra);
+      }
+
+      plDynamicArray<plCSharpObjectHandle> handles;
+      handles.Reserve(objects.GetCount());
+      const plTime start = plTime::Now();
+      for (plGameObject* pExtra : objects)
+        handles.PushBack(registry.RegisterObject(pExtra, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject));
+      const double fFirst = (plTime::Now() - start).GetNanoseconds() / objects.GetCount();
+
+      const plTime repeatStart = plTime::Now();
+      for (plGameObject* pExtra : objects)
+        registry.UnregisterObject(registry.RegisterObject(pExtra, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject));
+      const double fRepeat = (plTime::Now() - repeatStart).GetNanoseconds() / objects.GetCount();
+
+      for (const plCSharpObjectHandle& handle : handles)
+        registry.UnregisterObject(handle);
+
+      plLog::Info("Handle registry with 20000 objects: {} ns to register a new object, {} ns to find an existing one",
+        plArgF(fFirst, 1), plArgF(fRepeat, 1));
+    }
+
+    // A list argument (plVariantArray) converts element by element.
+    {
+      plUInt64 uiLogInfo = 0;
+      for (const plScriptBindingFunctionDesc& function : snapshot.m_Functions)
+      {
+        if (function.m_sDeclaringTypeName == "plScriptExtensionClass_Log" && function.m_sNativeName == "Info")
+          uiLogInfo = function.m_uiStableId;
+      }
+
+      if (uiLogInfo != 0)
+      {
+        const plStringView sFormat = "C# list argument: {0} and {1}";
+        const plStringView sElement = "two";
+        plCSharpValue elements[2];
+        elements[0].m_Kind = plCSharpValueKind::Int64;
+        elements[0].m_uiPayload0 = 1;
+        elements[1].m_Kind = plCSharpValueKind::Utf8String;
+        elements[1].m_uiPayload0 = reinterpret_cast<plUInt64>(sElement.GetStartPointer());
+        elements[1].m_uiPayload1 = sElement.GetElementCount();
+
+        plCSharpValue arguments[2];
+        arguments[0].m_Kind = plCSharpValueKind::Utf8String;
+        arguments[0].m_uiPayload0 = reinterpret_cast<plUInt64>(sFormat.GetStartPointer());
+        arguments[0].m_uiPayload1 = sFormat.GetElementCount();
+        arguments[1].m_Kind = plCSharpValueKind::ValueArray;
+        arguments[1].m_uiPayload0 = reinterpret_cast<plUInt64>(elements);
+        arguments[1].m_uiPayload1 = 2;
+
+        plCSharpValue result;
+        PL_SUCCEED_OR_RETURN(Require(bindings.InvokeReflected(uiLogInfo, {}, arguments, 2, &result) == plCSharpStatus::Success, "Pass a list to Log.Info"));
+        bindings.ReleaseValue(&result);
+      }
+    }
+
+    PL_SUCCEED_OR_RETURN(measure("Component.IsActive()", uiIsActive, hComponent, nullptr, 0));
+    PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition get", uiLocalPosition, hObject, nullptr, 0));
+    PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition set", uiLocalPosition, hObject, &positionValue, 1));
+    return PL_SUCCESS;
+  }
+
+  /// Handle-registry and execution-scope behaviour that needs no managed code or fixture.
+  plResult TestHandleRegistry()
+  {
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+    plDynamicArray<plCSharpObjectHandle> borrowed;
+    plCSharpObjectHandle reflected;
+
+    {
+      plWorldDesc worldDesc("CSharp handle registry");
+      plWorld world(worldDesc);
+      PL_LOCK(world.GetWriteMarker());
+      plCSharpExecutionScope scope(&world, &borrowed);
+
+      PL_SUCCEED_OR_RETURN(TestFullHandleListPrunesDeletedObjects(world, borrowed));
+
+      plScriptWorldModule* pModule = world.GetOrCreateModule<plScriptWorldModule>();
+      reflected = registry.RegisterObject(pModule, pModule->GetDynamicRTTI(), plCSharpNativeObjectKind::ReflectedObject);
+      void* pObject = nullptr;
+      const plRTTI* pType = nullptr;
+      PL_SUCCEED_OR_RETURN(Require(registry.ResolveObject(reflected, pObject, pType) == plCSharpStatus::Success, "A world module resolves while its world exists"));
+    }
+
+    // A raw-pointer handle must not outlive the world it was obtained in.
+    {
+      void* pObject = nullptr;
+      const plRTTI* pType = nullptr;
+      PL_SUCCEED_OR_RETURN(Require(registry.ResolveObject(reflected, pObject, pType) != plCSharpStatus::Success, "A world module handle stops resolving after its world is destroyed"));
+    }
+
+    registry.UnregisterObject(reflected);
+    for (const plCSharpObjectHandle& handle : borrowed)
+      registry.UnregisterObject(handle);
+
+    // A script instance destroyed during its own call must not be restored as the current handle list
+    // by any scope that ends afterwards, including a re-entrant one into the same instance.
+    {
+      plDynamicArray<plCSharpObjectHandle> destroyed;
+      plDynamicArray<plCSharpObjectHandle> other;
+      plCSharpObjectHandle probe;
+      probe.m_uiValue = 1;
+      probe.m_uiGeneration = 1;
+      probe.m_uiKind = static_cast<plUInt32>(plCSharpNativeObjectKind::GameObject);
+
+      plCSharpExecutionScope outer(nullptr, &destroyed);
+      {
+        plCSharpExecutionScope inner(nullptr, &other);
+        plCSharpExecutionScope reentrant(nullptr, &destroyed);
+        plCSharpExecutionScope::ForgetBorrowedHandles(&destroyed);
+        PL_SUCCEED_OR_RETURN(Require(!plCSharpExecutionScope::TrackBorrowedHandle(probe), "A forgotten list is not the current one"));
+      }
+
+      PL_SUCCEED_OR_RETURN(Require(!plCSharpExecutionScope::TrackBorrowedHandle(probe), "Ending later scopes does not restore a forgotten list"));
+      PL_SUCCEED_OR_RETURN(Require(destroyed.IsEmpty(), "Nothing was written into the forgotten list"));
+    }
+
+    plLog::Success("PASS: handle registry pruning, world-bound reflected handles and forgotten handle lists.");
+    return PL_SUCCESS;
+  }
 }
 
 class plCSharpRuntimeTests : public plApplication
@@ -58,6 +285,13 @@ public:
   }
   plResult Test()
   {
+    PL_SUCCEED_OR_RETURN(TestHandleRegistry());
+    PL_SUCCEED_OR_RETURN(MeasureEngineCalls());
+
+    // The fixture-free checks above can run alone with -registryOnly.
+    if (plCommandLineUtils::GetGlobalInstance()->GetBoolOption("-registryOnly"))
+      return PL_SUCCESS;
+
     const plString root = plCommandLineUtils::GetGlobalInstance()->GetStringOption("-fixture");
     PL_SUCCEED_OR_RETURN(Require(!root.IsEmpty(), "Specify the managed BrickBreaker fixture with -fixture"));
     plCSharpHost host;

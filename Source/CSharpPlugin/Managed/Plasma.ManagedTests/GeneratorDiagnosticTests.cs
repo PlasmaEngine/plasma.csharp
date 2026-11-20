@@ -25,6 +25,109 @@ public sealed class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void ExposesFieldsDeclaredOnABaseClass()
+    {
+        string generated = RunGenerator("""
+            using Plasma;
+            public abstract class EnemyBase : ComponentScript
+            {
+                [Expose] public float Health = 100;
+            }
+            [PlasmaScript] public sealed partial class Grunt : EnemyBase
+            {
+                [Expose] public float Speed = 4;
+            }
+            """);
+        Assert.Contains("\"Health\"", generated);
+        Assert.Contains("\"Speed\"", generated);
+    }
+
+    [Fact]
+    public void ReportsAPrivateMessageHandlerOnABaseClass()
+    {
+        var compilation = CreateCompilation("""
+            using Plasma;
+            [PlasmaMessage] public sealed class Ping { }
+            public abstract class EnemyBase : ComponentScript
+            {
+                [MessageHandler] private void OnPing(Ping message) { }
+            }
+            [PlasmaScript] public sealed partial class Grunt : EnemyBase { }
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ScriptDescriptorGenerator());
+        driver = driver.RunGenerators(compilation);
+        Assert.Contains(driver.GetRunResult().Diagnostics, diagnostic => diagnostic.Id == "PLCS007");
+    }
+
+    [Fact]
+    public void ExposesTypedComponentReferences()
+    {
+        const string source = """
+            using Plasma;
+            [PlasmaScript] public sealed partial class Lamp : ComponentScript
+            {
+                [Expose] public TestLampComponent Light { get; set; }
+            }
+            """;
+        const string manifest = """
+            {
+              "manifestVersion": 1, "canonicalIdentityVersion": 1, "schemaHash": "0000000000000001",
+              "types": [
+                { "id": "0000000000000001", "canonicalIdentity": "type:plComponent", "nativeName": "plComponent", "pluginName": "Test",
+                  "parentNativeName": "", "scriptExtensionName": "", "flags": 8, "variantType": 0, "typeVersion": 1, "typeSize": 1,
+                  "canAllocate": false, "hidden": false, "excludedFromScript": false, "attributes": [] },
+                { "id": "0000000000000002", "canonicalIdentity": "type:plTestLampComponent", "nativeName": "plTestLampComponent", "pluginName": "Test",
+                  "parentNativeName": "plComponent", "scriptExtensionName": "", "flags": 8, "variantType": 0, "typeVersion": 1, "typeSize": 1,
+                  "canAllocate": true, "hidden": false, "excludedFromScript": false, "attributes": [] }
+              ],
+              "properties": [], "functions": [], "messages": [], "diagnostics": []
+            }
+            """;
+
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            new ISourceGenerator[] { new BindingManifestGenerator().AsSourceGenerator(), new ScriptDescriptorGenerator().AsSourceGenerator() },
+            new AdditionalText[] { new InMemoryAdditionalText("PlasmaBindings.json", manifest) },
+            (CSharpParseOptions)compilation.SyntaxTrees.Single().Options);
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation generated, out ImmutableArray<Diagnostic> generatorDiagnostics);
+
+        Assert.DoesNotContain(generatorDiagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(generated.GetDiagnostics(), static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        string generatedSource = string.Join("\n", driver.GetRunResult().GeneratedTrees.Select(static tree => tree.GetText().ToString()));
+        Assert.Contains("[\"Reference.Component\"] = \"plTestLampComponent\"", generatedSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReportsCodeThatCompilesButDoesNothing()
+    {
+        var compilation = CreateCompilation("""
+            using Plasma;
+            [PlasmaScript] public sealed partial class Mistakes : ComponentScript
+            {
+                public void Update() { }
+                public new void Initialize() { }
+                public void Initialize(int helper) { }
+                [Range(0, 1)] public float NotExposed;
+                [Expose, Range(0, 1)] public string Label = "";
+                [Expose, Asset("Prefab")] public float Spawn;
+                [Expose, Range(0, 5)] public Time Cooldown;
+            }
+            [PlasmaScript] public partial struct NotAClass { }
+            """);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ScriptDescriptorGenerator());
+        driver = driver.RunGenerators(compilation);
+        Diagnostic[] diagnostics = driver.GetRunResult().Diagnostics.ToArray();
+
+        Assert.Equal(2, diagnostics.Count(d => d.Id == "PLCS010"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS011" && d.GetMessage().Contains("NotExposed"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS012" && d.GetMessage().Contains("Label"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS012" && d.GetMessage().Contains("Spawn"));
+        Assert.DoesNotContain(diagnostics, d => d.Id == "PLCS012" && d.GetMessage().Contains("Cooldown"));
+        Assert.Contains(diagnostics, d => d.Id == "PLCS003" && d.GetMessage().Contains("NotAClass"));
+    }
+
+    [Fact]
     public void RejectsAmbiguousFormerNames()
     {
         var compilation = CreateCompilation("""

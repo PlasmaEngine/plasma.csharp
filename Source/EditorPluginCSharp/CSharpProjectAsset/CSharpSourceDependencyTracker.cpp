@@ -45,9 +45,11 @@ namespace
 
   static plCSharpSourceDependencyTracker* s_pTracker = nullptr;
 
-  static bool IsIgnoredSourceDirectory(plStringView sPath)
+  /// Tests the path inside its data directory, so folders above the project never exclude it.
+  /// Matches the project asset's source filter, including installed packages under Plugins/.
+  static bool IsIgnoredSourceDirectory(const plDataDirPath& path)
   {
-    plStringBuilder clean = sPath;
+    plStringBuilder clean = path.GetDataDirRelativePath();
     clean.MakeCleanPath();
     clean.ToLower();
     clean.Prepend("/");
@@ -57,7 +59,8 @@ namespace
            clean.FindSubString("/bin/") != nullptr ||
            clean.FindSubString("/obj/") != nullptr ||
            clean.FindSubString("/intermediate/") != nullptr ||
-           clean.FindSubString("/.git/") != nullptr;
+           clean.FindSubString("/.git/") != nullptr ||
+           clean.FindSubString("/plugins/") != nullptr;
   }
 
   static plString MakeIdentity(const plDataDirPath& path)
@@ -162,7 +165,7 @@ struct plCSharpSourceDependencyTracker::Impl
     {
       const plStringView absolutePath = file.Key().GetAbsolutePath();
       if (!plPathUtils::GetFileExtension(absolutePath).IsEqual_NoCase("cs") ||
-          IsIgnoredSourceDirectory(absolutePath))
+          IsIgnoredSourceDirectory(file.Key()))
       {
         continue;
       }
@@ -352,7 +355,7 @@ void plCSharpSourceDependencyTracker::NotifyFileChange(
 {
   const plStringView absolutePath = event.m_Path.GetAbsolutePath();
   if (!plPathUtils::GetFileExtension(absolutePath).IsEqual_NoCase("cs") ||
-      IsIgnoredSourceDirectory(absolutePath))
+      IsIgnoredSourceDirectory(event.m_Path))
   {
     return;
   }

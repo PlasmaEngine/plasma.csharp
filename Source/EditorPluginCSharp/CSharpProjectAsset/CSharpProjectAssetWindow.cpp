@@ -548,16 +548,29 @@ void plCSharpProjectAssetDocumentWindow::CheckSetup()
   const plStringBuilder sPayload = plCSharpEditorPaths::FindPayloadRoot();
   const char* files[] = {"CSharp/Plasma.ScriptCore.dll", "CSharp/Plasma.ManagedHost.dll",
     "CSharp/Plasma.ManagedHost.runtimeconfig.json", "CSharp/Tools/Plasma.ScriptInspector.dll",
-    "CSharp/Tools/Plasma.ScriptCompiler.dll", "CSharp/M0Game/Plasma.Engine.Generator.dll",
-    "DotNet/host/fxr/10.0.10/hostfxr.dll"};
+    "CSharp/Tools/Plasma.ScriptCompiler.dll", "CSharp/M0Game/Plasma.Engine.Generator.dll"};
+
+  bool bMissingFiles = false;
   for (const char* szFile : files)
   {
     const plStringBuilder sPath(sPayload, "/", szFile);
-    AppendSetupOutput(plStringBuilder(plOSFile::ExistsFile(sPath) ? "Found: " : "Missing: ", szFile));
+    const bool bExists = plOSFile::ExistsFile(sPath);
+    bMissingFiles |= !bExists;
+    AppendSetupOutput(plStringBuilder(bExists ? "Found: " : "Missing: ", szFile));
   }
 
-  AppendSetupOutput("\nMissing package files: reinstall plasma.csharp, or rebuild the package before installing it.\n"
-                    "The engine checks native ABI compatibility when C# initializes; see the engine log for its selected runtime and any mismatch.\n\nChecking the project's .NET SDK...");
+  // The bundled runtime is an optional package component; without it the host uses an installed .NET 10.
+  plDynamicArray<plFileStats> runtimeVersions;
+  plOSFile::GatherAllItemsInFolder(runtimeVersions, plStringBuilder(sPayload, "/DotNet/host/fxr"), plFileSystemIteratorFlags::ReportFolders);
+  if (runtimeVersions.IsEmpty())
+    AppendSetupOutput("Bundled .NET runtime: not installed (optional). The engine uses a .NET 10 runtime installed on this machine.");
+  else
+    AppendSetupOutput(plStringBuilder("Bundled .NET runtime: ", runtimeVersions.PeekBack().m_sName));
+
+  if (bMissingFiles)
+    AppendSetupOutput("\nSome package files are missing: reinstall plasma.csharp, or rebuild the package before installing it.");
+
+  AppendSetupOutput("\nThe engine checks native ABI compatibility when C# initializes; see the engine log for its selected runtime and any mismatch.\n\nChecking the project's .NET SDK...");
 
   {
     PL_LOCK(m_SdkProbeMutex);

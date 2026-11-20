@@ -49,7 +49,11 @@ internal static unsafe class Program
         string packages = File.ReadAllText(Path.Combine(sample, "Editor/Packages.ddl"));
         string version = System.Text.RegularExpressions.Regex.Match(packages, "%Id\\s*\\{\\s*\"plasma\\.csharp\"\\s*\\}\\s*string\\s*%Version\\s*\\{\\s*\"([^\"]+)\"").Groups[1].Value;
         if (version.Length == 0) throw new InvalidDataException("No plasma.csharp package version in the sample.");
-        project.Descendants("PropertyGroup").First().Add(new XElement("CSharpPayload", Path.Combine(sample, "Plugins/plasma.csharp", version, "Bin/Windows_x64_Development/CSharp")));
+        // Compile against the payload under test when one is given; otherwise the sample's installed package.
+        string? payload = Environment.GetEnvironmentVariable("PLASMA_CSHARP_PAYLOAD");
+        if (string.IsNullOrWhiteSpace(payload))
+            payload = Path.Combine(sample, "Plugins/plasma.csharp", version, "Bin/Windows_x64_Development/CSharp");
+        project.Descendants("PropertyGroup").First().Add(new XElement("CSharpPayload", payload));
         project.Descendants("PropertyGroup").First().Add(new XElement("PlasmaSeparateBindings", "true"));
         project.Save(Path.Combine(root, "BrickBreaker.csproj"));
         string manifest = Path.Combine(sample, "Intermediate/PlasmaBindings.json");

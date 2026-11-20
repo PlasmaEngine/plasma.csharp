@@ -242,14 +242,16 @@ namespace
             uiMessageId = 0; // The envelope supplies the custom message type ID.
           }
 
+          // A message from a plugin that is absent in this build only disables that handler; the
+          // rest of the script still loads.
           const plRTTI* pMessageType = plRTTI::FindTypeByName(sNativeTypeName);
           if (pMessageType == nullptr || !pMessageType->IsDerivedFrom<plMessage>() ||
               pMessageType->GetAllocator() == nullptr)
           {
-            plLog::Error(
-              "C# message handler references unavailable native message type '{}'.",
+            plLog::Warning(
+              "C# message handler for '{}' is skipped: that native message type is not available in this build.",
               sNativeTypeName);
-            return PL_FAILURE;
+            continue;
           }
 
           plDynamicArray<const plAbstractProperty*> properties;
@@ -358,6 +360,8 @@ plResourceLoadDesc plCSharpClassResource::UnloadData(Unload WhatToUnload)
 
 plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
 {
+  PL_PROFILE_SCOPE("CSharp.LoadScriptClass");
+
   plResourceLoadDesc result;
   result.m_State = plResourceState::LoadedResourceMissing;
   result.m_uiQualityLevelsDiscardable = 0;
@@ -570,6 +574,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
       if (uiMetadataCount > s_uiMaxFieldEntries)
         return result;
       plDynamicArray<plHashedString> formerNames;
+      plString sComponentType;
       for (plUInt32 metadataIndex = 0;
         metadataIndex < uiMetadataCount; ++metadataIndex)
       {
@@ -582,6 +587,8 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         }
         if (bSelected && sKey.StartsWith("FormerName.") && !sValue.IsEmpty())
           formerNames.ExpandAndGetRef().Assign(sValue);
+        if (bSelected && sKey == "Reference.Component")
+          sComponentType = sValue;
       }
 
       if (bSelected)
@@ -596,6 +603,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         field.m_sName.Assign(sFieldName);
         field.m_sManagedType = sManagedType;
         field.m_FormerNames = std::move(formerNames);
+        field.m_pComponentType = sComponentType.IsEmpty() ? nullptr : plRTTI::FindTypeByName(sComponentType);
       }
     }
   }

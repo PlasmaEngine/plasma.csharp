@@ -4,6 +4,7 @@
 #include <CSharpPlugin/Hosting/CSharpAbi.h>
 #include <Foundation/Configuration/Singleton.h>
 #include <Foundation/Strings/String.h>
+#include <Foundation/Threading/AtomicInteger.h>
 #include <Foundation/Threading/Mutex.h>
 
 /// Process-wide .NET host. CoreCLR is initialized once; collectible script generations live behind
@@ -62,4 +63,6 @@ private:
   void* m_pHostFxrModule = nullptr;
   mutable plMutex m_InitializationMutex;
   InitializationState m_InitializationState = InitializationState::Uninitialized;
+  /// True while m_ManagedApi may be called; read without the lock on every script callback.
+  plAtomicBool m_bManagedApiReady;
 };

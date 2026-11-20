@@ -20,6 +20,21 @@ enum class plCSharpNativeObjectKind : plUInt32
   ReflectedObject,
 };
 
+/// An object handle's kind travels in bits 8..15 of its value flags.
+inline plCSharpValueFlags plCSharpEncodeObjectKind(plCSharpNativeObjectKind kind)
+{
+  return static_cast<plCSharpValueFlags>(static_cast<plUInt32>(kind) << 8);
+}
+
+inline plCSharpNativeObjectKind plCSharpDecodeObjectKind(plCSharpValueFlags flags)
+{
+  const plUInt32 uiKind = (static_cast<plUInt32>(flags) >> 8) & 0xFFu;
+  return uiKind >= static_cast<plUInt32>(plCSharpNativeObjectKind::World) &&
+             uiKind <= static_cast<plUInt32>(plCSharpNativeObjectKind::ReflectedObject)
+           ? static_cast<plCSharpNativeObjectKind>(uiKind)
+           : plCSharpNativeObjectKind::Invalid;
+}
+
 /// Generation-checked handles prevent collectible managed code from retaining native pointers.
 class PL_CSHARPPLUGIN_DLL plCSharpObjectRegistry
 {
@@ -54,8 +69,13 @@ private:
     plCSharpNativeObjectKind m_Kind = plCSharpNativeObjectKind::Invalid;
   };
 
+  static plUInt64 ComputeIdentity(const void* pObject, const plRTTI* pType, plCSharpNativeObjectKind kind);
+
   mutable plMutex m_Mutex;
   plHashTable<plUInt64, Entry> m_Entries;
+  /// Object identity (pointer, type, kind) to the id of its newest entry, so registering an object
+  /// that already has a handle is one lookup rather than a scan of every entry.
+  plHashTable<plUInt64, plUInt64> m_Identities;
   plUInt64 m_uiNextId = 1;
   plUInt64 m_uiNextGeneration = 1;
 
@@ -75,7 +95,12 @@ public:
   /// Returns false when there is no active managed-script execution scope.
   static bool TrackBorrowedHandle(plCSharpObjectHandle handle);
 
+  /// Detaches a handle list that is about to be destroyed from this thread's active scopes,
+  /// including outer scopes that restore it when they end.
+  static void ForgetBorrowedHandles(const plDynamicArray<plCSharpObjectHandle>* pBorrowedHandles);
+
 private:
   plWorld* m_pPreviousWorld = nullptr;
   plDynamicArray<plCSharpObjectHandle>* m_pPreviousBorrowedHandles = nullptr;
+  plCSharpExecutionScope* m_pPreviousScope = nullptr;
 };

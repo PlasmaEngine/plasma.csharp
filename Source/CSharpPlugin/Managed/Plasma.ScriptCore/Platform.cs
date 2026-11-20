@@ -47,7 +47,7 @@ public sealed class LobbySearch
 /// asynchronous ones return a Task that Update completes on the engine thread, so call Update every frame.
 /// Events arrive through EventReceived while Update runs and someone is subscribed. Dispose on script teardown.
 /// </summary>
-public sealed class Platform : IDisposable
+public sealed class Platform : IDisposable, IOwnedService
 {
     private const string Library = "plCSharpPlugin";
     private static readonly HashSet<Platform> Clients = [];
@@ -60,7 +60,17 @@ public sealed class Platform : IDisposable
     /// <summary>Raised from Update for every hub event taken since the last call.</summary>
     public event Action<PlatformEvent>? EventReceived;
 
-    public Platform(ComponentScript? owner = null) { _owner = owner; Clients.Add(this); }
+    /// <summary>Created in a script callback, the client belongs to that script unless another <paramref name="owner"/>
+    /// is given: the script calls <see cref="Update"/> each frame and disposes it when it goes away.</summary>
+    public Platform(ComponentScript? owner = null)
+    {
+        _owner = owner ?? ComponentScript.Current;
+        _owner?.Own(this);
+        if (_owner is null)
+            Clients.Add(this);
+    }
+
+    void IOwnedService.Pump() => Update();
 
     // ---------------------------------------------------------------- synchronous
 
@@ -194,12 +204,9 @@ public sealed class Platform : IDisposable
         _disposed = true;
         EventReceived = null;
         Clients.Remove(this);
+        _owner?.Release(this);
         var pending = _pending.Values.ToArray(); _pending.Clear();
         foreach (var p in pending) { p.Registration.Dispose(); p.Cancel(); }
-    }
-    internal static void DisposeOwned(ComponentScript owner)
-    {
-        foreach (var c in Clients.Where(c => ReferenceEquals(c._owner, owner)).ToArray()) c.Dispose();
     }
     internal static void ResetAll()
     {

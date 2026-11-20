@@ -137,7 +137,7 @@ namespace
 
       if (iterator.GetStats().m_bIsDirectory)
       {
-        if (IsIgnoredSourceDirectory(absolutePath) ||
+        if (IsIgnoredSourceDirectory(relativePath) ||
             !ContainsCSharpSource(relativePath, sources))
         {
           out_exclusions.Insert(relativePath);
@@ -183,16 +183,17 @@ namespace
     {
       plStringBuilder sourceFile = sourceIterator.GetCurrentPath();
       sourceFile.AppendPath(sourceIterator.GetStats().m_sName);
-      if (!sourceFile.GetFileExtension().IsEqual_NoCase("cs") ||
-          IsIgnoredSourceDirectory(sourceFile))
-      {
+      if (!sourceFile.GetFileExtension().IsEqual_NoCase("cs"))
         continue;
-      }
 
       if (sourceFile.MakeRelativeTo(projectDirectory).Failed())
         continue;
       sourceFile.MakeCleanPath();
       sourceFile.ReplaceAll("\\", "/");
+
+      if (IsIgnoredSourceDirectory(sourceFile))
+        continue;
+
       sources.PushBack(sourceFile);
     }
     sources.Sort();
@@ -329,6 +330,87 @@ namespace
     return true;
   }
 
+  /// \brief Points literal Plasma.ScriptCore and generator paths at the installed package payload.
+  ///
+  /// The generated project names the payload by path, and that path contains the package version.
+  /// Paths written through MSBuild properties ("$(...)") belong to the user and are left alone.
+  bool RepointManagedReferences(plStringBuilder& ref_contents, plStringView sDocumentDirectory)
+  {
+    plStringBuilder managedRoot = plCSharpEditorPaths::FindPayloadRoot();
+    managedRoot.AppendPath("CSharp");
+
+    plStringBuilder scriptCore(managedRoot);
+    scriptCore.AppendPath("Plasma.ScriptCore.dll");
+
+    plStringBuilder generator(managedRoot);
+    generator.AppendPath("M0Game/Plasma.Engine.Generator.dll");
+
+    if (!plOSFile::ExistsFile(scriptCore) || !plOSFile::ExistsFile(generator))
+      return false;
+
+    auto relativise = [sDocumentDirectory](plStringBuilder& ref_path)
+    {
+      plStringBuilder sRel = ref_path;
+      if (sRel.MakeRelativeTo(sDocumentDirectory).Succeeded())
+        ref_path = sRel;
+
+      ref_path.MakeCleanPath();
+      ref_path.ReplaceAll("\\", "/");
+    };
+
+    relativise(scriptCore);
+    relativise(generator);
+
+    plHybridArray<plStringView, 64> lines;
+    ref_contents.Split(true, lines, "\n");
+
+    plStringBuilder out;
+    bool bChanged = false;
+
+    for (plStringView line : lines)
+    {
+      // Compare without a trailing CR and keep the line's own indentation, so a correct file is never rewritten.
+      plStringView content = line;
+      const bool bCarriageReturn = content.EndsWith("\r");
+      if (bCarriageReturn)
+        content.Shrink(0, 1);
+
+      const char* szText = content.GetStartPointer();
+      while (szText < content.GetEndPointer() && (*szText == ' ' || *szText == '\t'))
+        ++szText;
+      const plStringView indentation(content.GetStartPointer(), szText);
+
+      plStringBuilder replacement;
+      if (content.FindSubString("$(") == nullptr)
+      {
+        if (content.FindSubString("<HintPath>") != nullptr && content.FindSubString("Plasma.ScriptCore.dll") != nullptr)
+          replacement.Set(indentation, "<HintPath>", scriptCore, "</HintPath>");
+        else if (content.FindSubString("<Analyzer Include=\"") != nullptr && content.FindSubString("Plasma.Engine.Generator.dll") != nullptr)
+          replacement.Set(indentation, "<Analyzer Include=\"", generator, "\" />");
+      }
+
+      if (!replacement.IsEmpty() && !replacement.IsEqual(content))
+      {
+        out.Append(replacement, bCarriageReturn ? "\r\n" : "\n");
+        bChanged = true;
+      }
+      else
+      {
+        out.Append(line, "\n");
+      }
+    }
+
+    if (!bChanged)
+      return false;
+
+    // Split keeps the final newline as an empty piece, which the loop turns back into one.
+    while (out.EndsWith("\n\n"))
+      out.Shrink(0, 1);
+
+    ref_contents = out;
+    return true;
+  }
+
   plStatus UpdateGeneratedProjectItemMode(plStringView sProjectFile)
   {
     plFileReader reader;
@@ -346,6 +428,12 @@ namespace
     documentDirectory.PathParentDirectory();
 
     bool bChanged = MigrateManagedReferences(contents, documentDirectory);
+
+    if (RepointManagedReferences(contents, documentDirectory))
+    {
+      plLog::Info("Updated the C# project '{}' to reference the installed plasma.csharp package.", sProjectFile);
+      bChanged = true;
+    }
 
     // Projects generated before packages could be installed into <project>/Plugins compile the
     // whole of that directory, including the source checkout of any package built locally.
@@ -642,6 +730,8 @@ namespace
     inout_sDiagnostics = stableDiagnostics;
   }
 
+  /// \param sPath Relative to the project or source root: folders above the project, such as D:/Plugins/MyGame,
+  /// must not exclude it.
   bool IsIgnoredSourceDirectory(plStringView sPath)
   {
     plStringBuilder clean = sPath;
@@ -1482,8 +1572,6 @@ plStatus plCSharpProjectAssetDocument::GatherSourceFiles(plStringView sSourceRoo
     absolutePath.AppendPath(iterator.GetStats().m_sName);
     if (!absolutePath.GetFileExtension().IsEqual_NoCase("cs"))
       continue;
-    if (IsIgnoredSourceDirectory(absolutePath))
-      continue;
 
     plStringBuilder relativePath = absolutePath;
     if (relativePath.MakeRelativeTo(sSourceRoot).Failed())
@@ -1491,6 +1579,9 @@ plStatus plCSharpProjectAssetDocument::GatherSourceFiles(plStringView sSourceRoo
 
     relativePath.MakeCleanPath();
     relativePath.ReplaceAll("\\", "/");
+
+    if (IsIgnoredSourceDirectory(relativePath))
+      continue;
     out_relativeSources.PushBack(relativePath);
   }
 
@@ -2210,8 +2301,9 @@ plExposedParameters* plCSharpProjectAssetDocument::CreateExposedParameters(
     plScriptFieldDesc desc;
     desc.m_sName = field.m_sName;
 
-    // A GameObject field is picked in the scene; the script component resolves it to a handle.
-    const bool bObjectField = field.m_sManagedType == "Plasma.GameObject";
+    // A GameObject field is picked in the scene; the script component resolves it to a handle. A typed
+    // component field is picked the same way, and the script receives that object's component.
+    const bool bObjectField = field.m_sManagedType == "Plasma.GameObject" || field.m_Metadata.Contains("Reference.Component");
     const plRTTI* pType = bObjectField ? plGetStaticRTTI<plString>() : GetExposedParameterType(field.m_sManagedType, field.m_DefaultValue.m_sKind);
     if (pType == nullptr)
     {
@@ -2337,6 +2429,18 @@ plUInt64 plCSharpProjectAssetDocument::ComputeTransformSettingsHash() const
   hashString(pProperties->m_sSourceRoot);
   hashString(pProperties->m_sBuildConfiguration);
   hashString(pProperties->m_sBindingManifest);
+
+  // A package upgrade changes the script library the project compiles against, so it must rebuild.
+  // Only the part from the package id on is hashed, so the hash does not differ between machines.
+  {
+    plStringBuilder payload = plCSharpEditorPaths::FindPayloadRoot();
+    payload.MakeCleanPath();
+    if (const char* szPackage = payload.FindLastSubString_NoCase("plasma.csharp/"))
+      hashString(plStringView(szPackage, payload.GetData() + payload.GetElementCount()));
+    else
+      hashString(payload);
+  }
+
   uiHash = plHashingUtils::xxHash64(&pProperties->m_bUsePersistentCompiler, sizeof(pProperties->m_bUsePersistentCompiler), uiHash);
   uiHash = plHashingUtils::xxHash64(&pProperties->m_uiBuildRequest, sizeof(pProperties->m_uiBuildRequest), uiHash);
   return uiHash;

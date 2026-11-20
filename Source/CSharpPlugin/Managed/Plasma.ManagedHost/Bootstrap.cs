@@ -158,20 +158,37 @@ public static unsafe partial class Bootstrap
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static CSharpStatus ShutdownExport()
     {
+        CSharpStatus result = CSharpStatus.Success;
         try
         {
             ulong[] generationIds = DetachAllInstancesForShutdown();
 
-            CSharpStatus result = CSharpStatus.Success;
+            // Every generation gets its unload attempt; one failure does not skip the rest.
             foreach (ulong generationId in generationIds)
             {
-                CSharpStatus unloadStatus = UnloadGenerationCore(generationId, out _);
+                CSharpStatus unloadStatus;
+                try
+                {
+                    unloadStatus = UnloadGenerationCore(generationId, out _);
+                }
+                catch (Exception exception)
+                {
+                    unloadStatus = Fail(CSharpStatus.ManagedException, exception);
+                }
+
                 if (unloadStatus != CSharpStatus.Success)
                 {
                     result = unloadStatus;
                 }
             }
-
+        }
+        catch (Exception exception)
+        {
+            result = Fail(CSharpStatus.ManagedException, exception);
+        }
+        finally
+        {
+            // The native side tears down its tables after this call, so the bridge must be reset regardless.
             lock (Sync)
             {
                 s_initialized = false;
@@ -179,13 +196,9 @@ public static unsafe partial class Bootstrap
                 s_nativeApi = default;
                 s_nativeM0Probe = null;
             }
+        }
 
-            return result;
-        }
-        catch (Exception exception)
-        {
-            return Fail(CSharpStatus.ManagedException, exception);
-        }
+        return result;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -202,7 +215,14 @@ public static unsafe partial class Bootstrap
 
         foreach (Instance instance in instances)
         {
-            instance.Script.__Detach();
+            try
+            {
+                instance.Script.__Detach();
+            }
+            catch (Exception exception)
+            {
+                Log(CSharpLogLevel.Warning, $"Detaching C# script '{instance.Script.GetType().FullName}' at shutdown failed: {exception.Message}");
+            }
         }
 
         return generationIds;
@@ -399,9 +419,12 @@ public static unsafe partial class Bootstrap
         using var call = new RuntimeCall();
         Instance? diagnosticInstance = null;
         bool invokingUpdate = false;
-        string lifecycleName = methodId <= (ulong)ScriptLifecycleMethod.Update
+
+        // Only failures need the name; building it on every Update would allocate each frame.
+        string LifecycleName() => methodId <= (ulong)ScriptLifecycleMethod.Update
             ? ((ScriptLifecycleMethod)methodId).ToString()
             : $"unknown lifecycle method {methodId}";
+
         try
         {
             if (result is null || (argumentCount > 0 && arguments is null))
@@ -419,7 +442,7 @@ public static unsafe partial class Bootstrap
                 !instance.Type.Lifecycle.TryGetValue((ScriptLifecycleMethod)methodId, out ScriptLifecycleInvoker? invoke))
             {
                 return Fail(CSharpStatus.MemberNotFound,
-                    $"C# script '{instance.Type.ManagedName}' does not implement '{lifecycleName}'. " +
+                    $"C# script '{instance.Type.ManagedName}' does not implement '{LifecycleName()}'. " +
                     "Rebuild the C# scripts if this method should be present.");
             }
 
@@ -431,8 +454,9 @@ public static unsafe partial class Bootstrap
                     return Fail(CSharpStatus.InvalidArgument, "C# Update requires one time argument.");
                 }
 
-                object? converted = ConvertFromValue(*arguments, typeof(double));
-                deltaTime = Time.FromSeconds((double)converted!);
+                deltaTime = arguments->Kind == CSharpValueKind.Double
+                    ? Time.FromSeconds(BitConverter.Int64BitsToDouble(unchecked((long)arguments->Payload0)))
+                    : Time.FromSeconds((double)ConvertFromValue(*arguments, typeof(double))!);
             }
             else if (argumentCount != 0)
             {
@@ -445,19 +469,29 @@ public static unsafe partial class Bootstrap
                 instance.FailedUpdateMvid = null;
             if ((ScriptLifecycleMethod)methodId == ScriptLifecycleMethod.Update)
             {
-                lock (Sync)
+                // Paused instances are rare; reading HasValue first keeps the lock off the per-frame path.
+                if (instance.FailedUpdateMvid.HasValue)
                 {
-                    Guid revision = Generations[instance.GenerationId].CurrentMvid;
-                    if (instance.FailedUpdateMvid == revision)
+                    lock (Sync)
                     {
-                        *result = default;
-                        return CSharpStatus.Success;
+                        Guid revision = Generations[instance.GenerationId].CurrentMvid;
+                        if (instance.FailedUpdateMvid == revision)
+                        {
+                            *result = default;
+                            return CSharpStatus.Success;
+                        }
                     }
                 }
                 invokingUpdate = true;
-                instance.Script.__DrainPostedActions();
+                instance.Script.__BeginUpdate(deltaTime);
             }
-            invoke(instance.Script, deltaTime);
+
+            // Async code started from a lifecycle method resumes in this script's Update.
+            using (ScriptContextScope context = instance.Script.__EnterContext())
+            {
+                invoke(instance.Script, deltaTime);
+            }
+
             *result = default;
             return CSharpStatus.Success;
         }
@@ -466,7 +500,7 @@ public static unsafe partial class Bootstrap
             return Fail(
                 CSharpStatus.InvalidValue,
                 FormatScriptException(
-                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {lifecycleName}",
+                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {LifecycleName()}",
                     instanceId,
                     diagnosticInstance,
                     exception));
@@ -482,7 +516,7 @@ public static unsafe partial class Bootstrap
             return Fail(
                 CSharpStatus.ManagedException,
                 FormatScriptException(
-                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {lifecycleName}",
+                    $"C# script '{diagnosticInstance?.Type.ManagedName ?? "<unknown>"}': {LifecycleName()}",
                     instanceId,
                     diagnosticInstance,
                     exception));
@@ -615,7 +649,11 @@ public static unsafe partial class Bootstrap
             object?[] values = [managedPayload];
             using ScriptExecutionContext.Scope scope =
                 ScriptExecutionContext.Enter(instance.Script.World);
-            message.Invoke(instance.Script, values);
+            using (ScriptContextScope context = instance.Script.__EnterContext())
+            {
+                message.Invoke(instance.Script, values);
+            }
+
             return CSharpStatus.Success;
         }
         catch (InvalidValueException exception)
@@ -1535,13 +1573,18 @@ public static unsafe partial class Bootstrap
         }
     }
 
+    private static bool IsComponentWrapper(Type type) =>
+        type.IsValueType && type.GetInterfaces().Any(static candidate =>
+            candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(INativeComponent<>));
+
     private static object ConvertObjectHandle(CSharpValue value, Type targetType)
     {
+        bool componentWrapper = IsComponentWrapper(targetType);
         NativeObjectKind expectedKind = targetType == typeof(World)
             ? NativeObjectKind.World
             : targetType == typeof(GameObject)
                 ? NativeObjectKind.GameObject
-                : targetType == typeof(Component)
+                : targetType == typeof(Component) || componentWrapper
                     ? NativeObjectKind.Component
                     : NativeObjectKind.ReflectedObject;
         uint encodedKind = ((uint)value.Flags >> 8) & 0xFFu;
@@ -1571,6 +1614,13 @@ public static unsafe partial class Bootstrap
         if (targetType == typeof(Component))
         {
             return new Component(nativeObject);
+        }
+
+        // A typed component field (an engine component wrapper generated into the game assembly).
+        if (componentWrapper)
+        {
+            return Activator.CreateInstance(targetType, nativeObject)
+                ?? throw new InvalidValueException($"Could not create component wrapper '{targetType}'.");
         }
 
         throw new InvalidValueException(
@@ -1708,16 +1758,20 @@ public static unsafe partial class Bootstrap
         }
     }
 
-    private static void TryDeleteDirectory(string path)
+    // Immutable generations load in place and have no shadow directory, so an empty path is normal here.
+    // Callers include the retirement timer, where an escaping exception would end the process.
+    internal static void TryDeleteDirectory(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
         try
         {
             Directory.Delete(path, recursive: true);
         }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
         }
     }

@@ -34,6 +34,8 @@ public enum NativeValueKind : uint
     Utf8String,
     ObjectHandle,
     ByteSpan,
+    /// <summary>Payload 0 points to an array of values, payload 1 is the element count.</summary>
+    ValueArray,
 }
 
 [Flags]
@@ -41,11 +43,30 @@ public enum NativeValueFlags : uint
 {
     None = 0,
     ManagedOwned = 1,
+    /// <summary>A byte span stored in the payload words themselves; its value-type tag gives the size.</summary>
+    InlineBytes = 2,
     ObjectKindWorld = 1u << 8,
     ObjectKindGameObject = 2u << 8,
     ObjectKindComponent = 3u << 8,
     ObjectKindResource = 4u << 8,
     ObjectKindReflectedObject = 5u << 8,
+    ByteSpanTypeMask = 0xFFu << 16,
+}
+
+/// <summary>Value type held by a byte-span value, in bits 16..23 of its flags. Untyped (variant)
+/// engine slots decode the bytes by this tag.</summary>
+public enum NativeByteSpanType : uint
+{
+    None = 0,
+    Time,
+    Angle,
+    Vec2,
+    Vec2U32,
+    Vec3,
+    Vec4,
+    Quat,
+    Color,
+    Transform,
 }
 
 /// <summary>Fixed-layout value used by generated wrappers to call reflected native functions.</summary>

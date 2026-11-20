@@ -3,7 +3,7 @@ using System.ComponentModel;
 namespace Plasma;
 
 /// <summary>Base class for scripts hosted by an existing native <c>plScriptComponent</c>.</summary>
-public abstract class ComponentScript
+public abstract partial class ComponentScript
 {
     public GameObject Owner { get; private set; }
     public World World { get; private set; }
@@ -36,6 +36,7 @@ public abstract class ComponentScript
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void __EnableUpdateDispatch(bool enabled)
     {
+        _updateDispatch = enabled;
         lock (_posted) _acceptPostedActions = enabled && !_lifetime.IsCancellationRequested;
     }
 
@@ -53,7 +54,16 @@ public abstract class ComponentScript
                 if (!_acceptPostedActions || _posted.Count == 0) return;
                 action = _posted.Dequeue();
             }
-            action();
+
+            // A failing action is reported on its own and does not pause this script's Update.
+            try
+            {
+                action();
+            }
+            catch (Exception exception)
+            {
+                ReportFailure($"A posted action of '{GetType().FullName}' failed", exception);
+            }
         }
     }
 
@@ -79,16 +89,44 @@ public abstract class ComponentScript
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void __Detach()
     {
-        lock (_posted) { _acceptPostedActions = false; _posted.Clear(); }
-        // Cancellation callbacks must not prevent native context cleanup.
-        try { _lifetime.Cancel(); }
-        catch (AggregateException exception) { Log.Error("Script lifetime cancellation callback failed", exception); }
-        SaveGame.DisposeOwned(this);
-        GameSettings.DisposeOwned(this);
-        Platform.DisposeOwned(this);
+        lock (_posted)
+        {
+            _acceptPostedActions = false;
+            _posted.Clear();
+        }
+
+        // Each step runs even when an earlier one throws, so the native context is always released.
+        DetachStep("timers and waits", () => _scheduler?.Close());
+        DetachStep("lifetime cancellation", _lifetime.Cancel);
+        DetachStep("save game, settings and platform clients", DisposeServices);
+
         Owner = default;
         World = default;
         OwnerComponent = default;
+    }
+
+    private void DetachStep(string name, Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception exception)
+        {
+            ReportFailure($"Releasing {name} of '{GetType().FullName}' failed", exception);
+        }
+    }
+
+    // Outside the engine (script tests) there is no native log to write to; the failure is still contained.
+    private static void ReportFailure(string message, Exception exception)
+    {
+        try
+        {
+            Log.Error(message, exception);
+        }
+        catch (InvalidOperationException)
+        {
+        }
     }
 }
 
