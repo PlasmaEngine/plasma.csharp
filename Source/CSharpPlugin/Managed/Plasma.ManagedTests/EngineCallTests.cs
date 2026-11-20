@@ -59,6 +59,23 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
         Assert.Throws<InvalidCastException>(() => (Vec3)fromInt);
     }
 
+    private enum Phase { Idle, Combat = 3 }
+
+    [Fact]
+    public void VariantConvertsGenericallyForTypedKeys()
+    {
+        Assert.Equal(3.5f, Variant.From(3.5f).As<float>());
+        Assert.Equal(7u, Variant.From(7u).As<uint>());
+        Assert.True(Variant.From(true).As<bool>());
+        Assert.Equal(new Vec3(1, 2, 3), Variant.From(new Vec3(1, 2, 3)).As<Vec3>());
+        Assert.Equal("text", Variant.From("text").As<string>());
+        Assert.Equal(Phase.Combat, Variant.From(3).As<Phase>());
+        Assert.Equal(42, ((Variant)42L).As<int>());
+
+        var key = new BlackboardKey<float>("TargetDistance");
+        Assert.Equal("TargetDistance", key.ToString());
+    }
+
     [Fact]
     public void AVariantCrossesTheBoundaryWithoutBoxing()
     {

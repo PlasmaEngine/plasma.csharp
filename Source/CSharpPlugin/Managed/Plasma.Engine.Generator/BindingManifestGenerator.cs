@@ -297,7 +297,10 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 }
 
                 if (!wellKnown)
+                {
                     RenderLivenessMembers(source, type);
+                    RenderTypedEntryAccessors(source, type);
+                }
 
                 foreach (BindingProperty property in GetInheritedProperties(type))
                 {
@@ -502,6 +505,23 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 source.AppendLine("        /// <summary>Whether the object still exists in the engine. Asks the engine, so call it from a script callback.</summary>");
                 source.AppendLine("        public bool IsAlive => Native.IsAlive;");
             }
+        }
+
+        /// <summary>Typed Get/Set over a blackboard-style pair GetEntryValue(name) / SetEntryValue(name, value).</summary>
+        private void RenderTypedEntryAccessors(StringBuilder source, BindingType type)
+        {
+            BindingFunction[] functions = GetInheritedFunctions(type).ToArray();
+            bool hasGet = functions.Any(static f => f.PublicName == "GetEntryValue" && f.Parameters.Count == 1 && f.ReturnTypeName == "plVariant");
+            bool hasSet = functions.Any(static f => f.PublicName == "SetEntryValue" && f.Parameters.Count == 2 && f.Parameters[1].TypeName == "plVariant");
+            bool taken = functions.Any(static f => f.PublicName is "Get" or "Set") ||
+                         GetInheritedProperties(type).Any(property => PropertyName(property.NativeName) is "Get" or "Set");
+            if (!hasGet || !hasSet || taken)
+                return;
+
+            source.AppendLine("        /// <summary>Reads an entry as the type its key declares.</summary>");
+            source.AppendLine("        public T Get<T>(global::Plasma.BlackboardKey<T> key) => GetEntryValue(key.Name).As<T>();");
+            source.AppendLine("        /// <summary>Writes an entry with the type its key declares.</summary>");
+            source.AppendLine("        public void Set<T>(global::Plasma.BlackboardKey<T> key, T value) => SetEntryValue(key.Name, global::Plasma.Variant.From(value));");
         }
 
         private static void RenderPropertyGetter(

@@ -3,6 +3,13 @@ using System.Runtime.CompilerServices;
 
 namespace Plasma;
 
+/// <summary>A blackboard entry name together with the type stored under it, so reads and writes are typed:
+/// <c>static readonly BlackboardKey&lt;float&gt; Distance = new("TargetDistance");</c> then <c>board.Get(Distance)</c>.</summary>
+public readonly record struct BlackboardKey<T>(string Name)
+{
+    public override string ToString() => Name;
+}
+
 /// <summary>What a <see cref="Variant"/> holds.</summary>
 public enum VariantKind : byte
 {
@@ -113,7 +120,56 @@ public readonly struct Variant : IEquatable<Variant>, IConvertible
         _ => default,
     };
 
+    /// <summary>Wraps a value of a type known at compile time; numbers and vectors are not boxed.</summary>
+    public static Variant From<T>(T value)
+    {
+        if (typeof(T) == typeof(Variant)) return Unsafe.As<T, Variant>(ref value);
+        if (typeof(T) == typeof(bool)) return Unsafe.As<T, bool>(ref value);
+        if (typeof(T) == typeof(int)) return Unsafe.As<T, int>(ref value);
+        if (typeof(T) == typeof(long)) return Unsafe.As<T, long>(ref value);
+        if (typeof(T) == typeof(uint)) return Unsafe.As<T, uint>(ref value);
+        if (typeof(T) == typeof(ulong)) return Unsafe.As<T, ulong>(ref value);
+        if (typeof(T) == typeof(float)) return Unsafe.As<T, float>(ref value);
+        if (typeof(T) == typeof(double)) return Unsafe.As<T, double>(ref value);
+        if (typeof(T) == typeof(Time)) return Unsafe.As<T, Time>(ref value);
+        if (typeof(T) == typeof(Angle)) return Unsafe.As<T, Angle>(ref value);
+        if (typeof(T) == typeof(Vec2)) return Unsafe.As<T, Vec2>(ref value);
+        if (typeof(T) == typeof(Vec3)) return Unsafe.As<T, Vec3>(ref value);
+        if (typeof(T) == typeof(Vec4)) return Unsafe.As<T, Vec4>(ref value);
+        if (typeof(T) == typeof(Quat)) return Unsafe.As<T, Quat>(ref value);
+        if (typeof(T) == typeof(Color)) return Unsafe.As<T, Color>(ref value);
+        if (typeof(T) == typeof(GameObject)) return Unsafe.As<T, GameObject>(ref value);
+        if (typeof(T) == typeof(Component)) return Unsafe.As<T, Component>(ref value);
+        return FromObject(value);
+    }
+
     // ---------------------------------------------------------------- out
+
+    /// <summary>The value as <typeparamref name="T"/>, with the same conversions as the explicit casts.</summary>
+    public T As<T>()
+    {
+        if (typeof(T) == typeof(Variant)) { Variant self = this; return Unsafe.As<Variant, T>(ref self); }
+        if (typeof(T) == typeof(bool)) { bool v = AsBool(); return Unsafe.As<bool, T>(ref v); }
+        if (typeof(T) == typeof(int)) { int v = (int)this; return Unsafe.As<int, T>(ref v); }
+        if (typeof(T) == typeof(long)) { long v = AsInt64(); return Unsafe.As<long, T>(ref v); }
+        if (typeof(T) == typeof(uint)) { uint v = (uint)this; return Unsafe.As<uint, T>(ref v); }
+        if (typeof(T) == typeof(ulong)) { ulong v = AsUInt64(); return Unsafe.As<ulong, T>(ref v); }
+        if (typeof(T) == typeof(float)) { float v = (float)AsDouble(); return Unsafe.As<float, T>(ref v); }
+        if (typeof(T) == typeof(double)) { double v = AsDouble(); return Unsafe.As<double, T>(ref v); }
+        if (typeof(T) == typeof(Time)) { Time v = (Time)this; return Unsafe.As<Time, T>(ref v); }
+        if (typeof(T) == typeof(Angle)) { Angle v = (Angle)this; return Unsafe.As<Angle, T>(ref v); }
+        if (typeof(T) == typeof(Vec2)) { Vec2 v = (Vec2)this; return Unsafe.As<Vec2, T>(ref v); }
+        if (typeof(T) == typeof(Vec3)) { Vec3 v = (Vec3)this; return Unsafe.As<Vec3, T>(ref v); }
+        if (typeof(T) == typeof(Vec4)) { Vec4 v = (Vec4)this; return Unsafe.As<Vec4, T>(ref v); }
+        if (typeof(T) == typeof(Quat)) { Quat v = (Quat)this; return Unsafe.As<Quat, T>(ref v); }
+        if (typeof(T) == typeof(Color)) { Color v = (Color)this; return Unsafe.As<Color, T>(ref v); }
+        if (typeof(T) == typeof(GameObject)) { GameObject v = (GameObject)this; return Unsafe.As<GameObject, T>(ref v); }
+        if (typeof(T) == typeof(Component)) { Component v = (Component)this; return Unsafe.As<Component, T>(ref v); }
+        if (typeof(T) == typeof(string)) return (T)(object)ToString();
+        if (typeof(T) == typeof(Transform)) return (T)(object)(Transform)this;
+        if (typeof(T).IsEnum) return (T)Enum.ToObject(typeof(T), AsInt64());
+        throw WrongKind(typeof(T));
+    }
 
     public bool AsBool() => Kind switch
     {
