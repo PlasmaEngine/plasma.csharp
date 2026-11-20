@@ -1,6 +1,7 @@
 #include <CSharpPlugin/Hosting/CSharpHost.h>
 #include <CSharpPlugin/Runtime/CSharpProjectRuntime.h>
 #include <CSharpPlugin/Runtime/CSharpInstance.h>
+#include <CSharpPlugin/Runtime/CSharpBindingRuntime.h>
 #include <CSharpPlugin/Runtime/CSharpObjectRegistry.h>
 #include <Core/Scripting/ScriptWorldModule.h>
 #include <Core/Scripting/ScriptComponent.h>
@@ -63,6 +64,84 @@ namespace
     const plCSharpObjectHandle late = registry.RegisterObject(pLate, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
     PL_SUCCEED_OR_RETURN(Require(plCSharpExecutionScope::TrackBorrowedHandle(late), "A full list made room by releasing deleted objects"));
     return Require(ref_borrowed.GetCount() == 1, "Only the live object's handle remains");
+  }
+
+  /// Native cost of one engine call from C#, through the same entry point managed code uses.
+  /// Reported, not asserted: timings depend on whatever else the machine is doing.
+  plResult MeasureEngineCalls()
+  {
+    plScriptBindingSnapshot snapshot;
+    PL_SUCCEED_OR_RETURN(plScriptBindingRegistry::CreateSnapshot(snapshot));
+
+    plUInt64 uiIsActive = 0;
+    for (const plScriptBindingFunctionDesc& function : snapshot.m_Functions)
+    {
+      if (function.m_sDeclaringTypeName == "plComponent" && function.m_sNativeName == "IsActive")
+        uiIsActive = function.m_uiStableId;
+    }
+
+    plUInt64 uiLocalPosition = 0;
+    for (const plScriptBindingPropertyDesc& property : snapshot.m_Properties)
+    {
+      if (property.m_sDeclaringTypeName == "plGameObject" && property.m_sNativeName == "LocalPosition")
+        uiLocalPosition = property.m_uiStableId;
+    }
+
+    PL_SUCCEED_OR_RETURN(Require(uiIsActive != 0 && uiLocalPosition != 0, "Find benchmark bindings"));
+
+    plWorldDesc worldDesc("CSharp engine call cost");
+    plWorld world(worldDesc);
+    PL_LOCK(world.GetWriteMarker());
+
+    // Dynamic, because the benchmark moves it.
+    plGameObjectDesc objectDesc;
+    objectDesc.m_bDynamic = true;
+    plGameObject* pObject = nullptr;
+    world.CreateObject(objectDesc, pObject);
+    plScriptComponent* pComponent = nullptr;
+    plScriptComponent::CreateComponent(pObject, pComponent);
+
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+    plDynamicArray<plCSharpObjectHandle> borrowed;
+    plCSharpExecutionScope scope(&world, &borrowed);
+    const plCSharpObjectHandle hObject = registry.RegisterObject(pObject, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
+    const plCSharpObjectHandle hComponent = registry.RegisterObject(pComponent, pComponent->GetDynamicRTTI(), plCSharpNativeObjectKind::Component);
+    PL_SCOPE_EXIT(registry.UnregisterObject(hObject); registry.UnregisterObject(hComponent););
+
+    auto& bindings = plCSharpBindingRuntime::GetSingleton();
+    PL_SUCCEED_OR_RETURN(bindings.Startup());
+    PL_SCOPE_EXIT(bindings.Shutdown());
+
+    const plVec3 position(1, 2, 3);
+    plCSharpValue positionValue;
+    positionValue.m_Kind = plCSharpValueKind::ByteSpan;
+    positionValue.m_Flags = plCSharpEncodeByteSpanType(plCSharpValueFlags::None, plCSharpByteSpanType::Vec3);
+    positionValue.m_uiPayload0 = reinterpret_cast<plUInt64>(&position);
+    positionValue.m_uiPayload1 = sizeof(position);
+
+    auto measure = [&](plStringView sName, plUInt64 uiId, plCSharpObjectHandle target, const plCSharpValue* pArguments, plUInt32 uiCount) -> plResult
+    {
+      constexpr plUInt32 uiCalls = 100000;
+      plCSharpValue result;
+      PL_SUCCEED_OR_RETURN(Require(bindings.InvokeReflected(uiId, target, pArguments, uiCount, &result) == plCSharpStatus::Success, sName));
+      bindings.ReleaseValue(&result);
+
+      const plTime start = plTime::Now();
+      for (plUInt32 i = 0; i < uiCalls; ++i)
+      {
+        bindings.InvokeReflected(uiId, target, pArguments, uiCount, &result);
+        bindings.ReleaseValue(&result);
+      }
+
+      const double fNanoseconds = (plTime::Now() - start).GetNanoseconds() / uiCalls;
+      plLog::Info("Engine call cost, native side: {} {} ns per call", sName, plArgF(fNanoseconds, 1));
+      return PL_SUCCESS;
+    };
+
+    PL_SUCCEED_OR_RETURN(measure("Component.IsActive()", uiIsActive, hComponent, nullptr, 0));
+    PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition get", uiLocalPosition, hObject, nullptr, 0));
+    PL_SUCCEED_OR_RETURN(measure("GameObject.LocalPosition set", uiLocalPosition, hObject, &positionValue, 1));
+    return PL_SUCCESS;
   }
 
   /// Handle-registry and execution-scope behaviour that needs no managed code or fixture.
@@ -144,6 +223,7 @@ public:
   plResult Test()
   {
     PL_SUCCEED_OR_RETURN(TestHandleRegistry());
+    PL_SUCCEED_OR_RETURN(MeasureEngineCalls());
 
     // The fixture-free checks above can run alone with -registryOnly.
     if (plCommandLineUtils::GetGlobalInstance()->GetBoolOption("-registryOnly"))
