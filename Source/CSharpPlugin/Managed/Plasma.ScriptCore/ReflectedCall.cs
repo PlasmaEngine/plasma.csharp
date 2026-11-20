@@ -321,8 +321,7 @@ public static unsafe class ReflectedCall
                 ObjectKindFromFlags(value.Flags) is { } kind
                     ? kind
                     : NativeKindFor(type)),
-            NativeValueKind.ByteSpan => Marshal.PtrToStructure((nint)value.Payload0, type)
-                ?? throw new PlasmaException($"Could not decode native value as '{type}'."),
+            NativeValueKind.ByteSpan => ReadBytes(value, type),
             _ => throw new PlasmaException($"Native value kind '{value.Kind}' is unsupported."),
         };
 
@@ -370,12 +369,12 @@ public static unsafe class ReflectedCall
         if (value.Kind == NativeValueKind.ByteSpan)
         {
             Type? tagged = TypeForByteSpan((NativeByteSpanType)(((uint)value.Flags & (uint)NativeValueFlags.ByteSpanTypeMask) >> ByteSpanTypeShift));
-            if (tagged is null || value.Payload0 == 0 || value.Payload1 != (ulong)Marshal.SizeOf(tagged))
+            if (tagged is null)
             {
                 throw new PlasmaException("The engine returned a value of a type the C# bridge cannot represent as 'object'.");
             }
 
-            return Marshal.PtrToStructure((nint)value.Payload0, tagged);
+            return ReadBytes(value, tagged);
         }
 
         return value.Kind switch
@@ -387,6 +386,19 @@ public static unsafe class ReflectedCall
             NativeValueKind.Utf8String => Marshal.PtrToStringUTF8((nint)value.Payload0, checked((int)value.Payload1)) ?? string.Empty,
             _ => throw new PlasmaException($"Native value kind '{value.Kind}' is unsupported."),
         };
+    }
+
+    // A byte span is stored either behind its pointer or, for small tagged values, in the payload words.
+    private static object ReadBytes(NativeValue value, Type type)
+    {
+        int size = Marshal.SizeOf(type);
+        if ((value.Flags & NativeValueFlags.InlineBytes) != 0 && size <= 16)
+            return Marshal.PtrToStructure((nint)(&value.Payload0), type)!;
+
+        if (value.Payload0 == 0 || value.Payload1 != (ulong)size)
+            throw new PlasmaException($"Could not decode native value as '{type}'.");
+
+        return Marshal.PtrToStructure((nint)value.Payload0, type)!;
     }
 
     private static bool SameValue(in NativeValue a, in NativeValue b) =>

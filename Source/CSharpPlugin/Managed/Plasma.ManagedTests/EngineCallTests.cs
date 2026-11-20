@@ -11,6 +11,7 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
     private const ulong FloatCall = 1;
     private const ulong VectorResultCall = 2;
     private const ulong RecordArgumentCall = 3;
+    private const ulong InlineVectorResultCall = 4;
 
     private static CSharpValue s_lastArgument;
     private static readonly Vec3* s_vector = AllocateVector();
@@ -35,6 +36,21 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
             Assert.Equal(CSharpValueKind.ByteSpan, s_lastArgument.Kind);
             Assert.Equal((uint)NativeByteSpanType.Vec3, ((uint)s_lastArgument.Flags >> 16) & 0xFFu);
             Assert.Equal(new Vec3(4, 5, 6), arguments[0]);
+        });
+    }
+
+    [Fact]
+    public void SmallValuesComeBackInlineOnBothPaths()
+    {
+        WithStub(() =>
+        {
+            Assert.Equal(new Vec3(7, 8, 9), ReflectedCall.Invoke<Vec3>(InlineVectorResultCall, "Test.GetPosition", default, [], []));
+            Assert.Equal(new Vec3(7, 8, 9), ReflectedCall.Invoke<object?>(InlineVectorResultCall, "Test.GetVariant", default, [], []));
+
+            Span<NativeValue> __plArgs = default;
+            using EngineCall __plCall = new(InlineVectorResultCall, "Test.GetPosition", default, __plArgs);
+            __plCall.Invoke();
+            Assert.Equal(new Vec3(7, 8, 9), __plCall.ResultBytes<Vec3>(-1));
         });
     }
 
@@ -145,6 +161,12 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
                 result->Flags = (CSharpValueFlags)((uint)NativeByteSpanType.Vec3 << 16);
                 result->Payload0 = (ulong)s_vector;
                 result->Payload1 = (ulong)sizeof(Vec3);
+                return CSharpStatus.Success;
+
+            case InlineVectorResultCall:
+                result->Kind = CSharpValueKind.ByteSpan;
+                result->Flags = (CSharpValueFlags)(((uint)NativeByteSpanType.Vec3 << 16) | (uint)NativeValueFlags.InlineBytes);
+                *(Vec3*)&result->Payload0 = new Vec3(7, 8, 9);
                 return CSharpStatus.Success;
 
             case RecordArgumentCall:

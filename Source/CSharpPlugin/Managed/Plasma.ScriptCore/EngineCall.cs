@@ -179,6 +179,9 @@ public unsafe ref struct EngineCall
         if (value.Kind == NativeValueKind.Null)
             return default;
 
+        if (value.Kind == NativeValueKind.ByteSpan && (value.Flags & NativeValueFlags.InlineBytes) != 0 && sizeof(T) <= 16)
+            return Unsafe.ReadUnaligned<T>(&value.Payload0);
+
         if (value.Kind != NativeValueKind.ByteSpan || value.Payload0 == 0 || value.Payload1 != (ulong)sizeof(T))
             throw new PlasmaException($"Engine API '{_apiName}' returned a value that is not a '{typeof(T).Name}'.");
 

@@ -60,6 +60,9 @@ enum class plCSharpValueFlags : plUInt32
 {
   None = 0,
   ManagedOwned = PL_BIT(0),
+  /// A ByteSpan whose bytes are stored in the two payload words themselves (at most 16 bytes); its
+  /// value-type tag gives the size. Nothing to release.
+  InlineBytes = PL_BIT(1),
   ObjectKindWorld = 1u << 8,
   ObjectKindGameObject = 2u << 8,
   ObjectKindComponent = 3u << 8,
@@ -95,6 +98,31 @@ inline plCSharpByteSpanType plCSharpDecodeByteSpanType(plCSharpValueFlags flags)
   return static_cast<plCSharpByteSpanType>((static_cast<plUInt32>(flags) >> plCSharpByteSpanTypeShift) & 0xFFu);
 }
 
+/// The size of a tagged value type, as laid out on both sides of the boundary; 0 for None.
+inline plUInt32 plCSharpByteSpanTypeSize(plCSharpByteSpanType type)
+{
+  switch (type)
+  {
+    case plCSharpByteSpanType::Time:
+      return 8;
+    case plCSharpByteSpanType::Angle:
+      return 4;
+    case plCSharpByteSpanType::Vec2:
+    case plCSharpByteSpanType::Vec2U32:
+      return 8;
+    case plCSharpByteSpanType::Vec3:
+      return 12;
+    case plCSharpByteSpanType::Vec4:
+    case plCSharpByteSpanType::Quat:
+    case plCSharpByteSpanType::Color:
+      return 16;
+    case plCSharpByteSpanType::Transform:
+      return 40;
+    default:
+      return 0;
+  }
+}
+
 struct plCSharpUtf8Span
 {
   const char* m_pData = nullptr;
@@ -127,6 +155,24 @@ struct plCSharpValue
   plUInt64 m_uiPayload0 = 0;
   plUInt64 m_uiPayload1 = 0;
 };
+
+inline bool plCSharpHasInlineBytes(const plCSharpValue& value)
+{
+  return (static_cast<plUInt32>(value.m_Flags) & static_cast<plUInt32>(plCSharpValueFlags::InlineBytes)) != 0;
+}
+
+/// The bytes of a ByteSpan value, whether stored inline or behind its pointer.
+inline const void* plCSharpGetBytes(const plCSharpValue& value, plUInt64& out_uiSize)
+{
+  if (plCSharpHasInlineBytes(value))
+  {
+    out_uiSize = plCSharpByteSpanTypeSize(plCSharpDecodeByteSpanType(value.m_Flags));
+    return &value.m_uiPayload0;
+  }
+
+  out_uiSize = value.m_uiPayload1;
+  return reinterpret_cast<const void*>(value.m_uiPayload0);
+}
 
 struct plCSharpGenerationLoadDesc
 {

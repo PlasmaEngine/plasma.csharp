@@ -41,6 +41,8 @@ public enum NativeValueFlags : uint
 {
     None = 0,
     ManagedOwned = 1,
+    /// <summary>A byte span stored in the payload words themselves; its value-type tag gives the size.</summary>
+    InlineBytes = 2,
     ObjectKindWorld = 1u << 8,
     ObjectKindGameObject = 2u << 8,
     ObjectKindComponent = 3u << 8,

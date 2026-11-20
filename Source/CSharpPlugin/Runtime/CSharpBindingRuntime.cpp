@@ -89,7 +89,9 @@ namespace
   template <typename T>
   static plResult ReadTaggedBytes(const plCSharpValue& value, const void* pData, plVariant& out_value)
   {
-    if (value.m_uiPayload1 != sizeof(T))
+    plUInt64 uiSize = 0;
+    plCSharpGetBytes(value, uiSize);
+    if (uiSize != sizeof(T))
       return PL_FAILURE;
 
     out_value = *static_cast<const T*>(pData);
@@ -239,21 +241,20 @@ namespace
       }
       case plCSharpValueKind::ByteSpan:
       {
-        if (value.m_uiPayload0 == 0)
+        plUInt64 uiSize = 0;
+        const void* pData = plCSharpGetBytes(value, uiSize);
+        if (pData == nullptr || uiSize == 0)
           return PL_FAILURE;
-
-        const void* pData = reinterpret_cast<const void*>(value.m_uiPayload0);
 
         if (pExpectedType == nullptr || pExpectedType == plGetStaticRTTI<plVariant>())
           return ConvertTaggedBytesToVariant(value, pData, out_value);
 
-        if (IsTypeNamed(pExpectedType, "plColorGammaUB") &&
-            value.m_uiPayload1 == sizeof(plColor))
+        if (IsTypeNamed(pExpectedType, "plColorGammaUB") && uiSize == sizeof(plColor))
         {
           out_value = plColorGammaUB(*static_cast<const plColor*>(pData));
           return PL_SUCCESS;
         }
-        if (value.m_uiPayload1 != pExpectedType->GetTypeSize())
+        if (uiSize != pExpectedType->GetTypeSize())
           return PL_FAILURE;
 
         switch (pExpectedType->GetVariantType())
@@ -317,6 +318,18 @@ namespace
     plCSharpValueKind kind, const void* pData, plUInt32 uiSize, plCSharpValue& out_value,
     plCSharpByteSpanType byteSpanType = plCSharpByteSpanType::None)
   {
+    // Small tagged values travel inside the value itself: no allocation, nothing for the caller to release.
+    if (kind == plCSharpValueKind::ByteSpan && byteSpanType != plCSharpByteSpanType::None &&
+        uiSize <= sizeof(out_value.m_uiPayload0) + sizeof(out_value.m_uiPayload1))
+    {
+      out_value.m_Kind = kind;
+      out_value.m_Flags = plCSharpEncodeByteSpanType(plCSharpValueFlags::InlineBytes, byteSpanType);
+      out_value.m_uiPayload0 = 0;
+      out_value.m_uiPayload1 = 0;
+      plMemoryUtils::RawByteCopy(&out_value.m_uiPayload0, pData, uiSize);
+      return PL_SUCCESS;
+    }
+
     void* pCopy = nullptr;
     if (uiSize > 0)
     {
@@ -539,7 +552,7 @@ void plCSharpBindingRuntime::Shutdown()
   m_bPluginChangesInProgress = true;
   m_bSnapshotValid = false;
   m_uiSchemaHash = 0;
-  m_Snapshot = {};
+  m_pSnapshot.Clear();
 }
 
 plResult plCSharpBindingRuntime::Refresh()
@@ -602,26 +615,26 @@ plCSharpStatus plCSharpBindingRuntime::InvokeReflected(plUInt64 uiBindingId,
 
   *out_pResult = {};
 
-  // Hold the recursive mutex through invocation. BeforePluginChanges takes the
-  // same lock and marks the cache unavailable before any owning DLL can unload,
-  // so the raw RTTI/property pointers remain callable for this entire scope.
-  PL_LOCK(m_Mutex);
-  if (m_bPluginChangesInProgress || !EnsureSnapshotLocked())
-    return plCSharpStatus::NotInitialized;
-
-  if (const auto* pFunction = m_Snapshot.FindFunction(uiBindingId))
+  // The lock covers only taking a reference to the current snapshot. The engine call itself runs
+  // unlocked: it can load resources or call back into C#, and other threads must not wait on it.
+  // Plugins change between frames, never while a script call is running.
+  plSharedPtr<SnapshotData> pSnapshot;
   {
-    return InvokeFunction(
-      *pFunction, target, pArguments, uiArgumentCount, out_pResult);
+    PL_LOCK(m_Mutex);
+    if (m_bPluginChangesInProgress || !EnsureSnapshotLocked())
+      return plCSharpStatus::NotInitialized;
+
+    pSnapshot = m_pSnapshot;
   }
 
-  if (const auto* pProperty = m_Snapshot.FindProperty(uiBindingId))
-  {
-    return InvokeProperty(
-      *pProperty, target, pArguments, uiArgumentCount, out_pResult);
-  }
+  const CallPlan* pPlan = pSnapshot->m_Plans.GetValue(uiBindingId);
+  if (pPlan == nullptr)
+    return plCSharpStatus::MemberNotFound;
 
-  return plCSharpStatus::MemberNotFound;
+  if (pPlan->m_pFunction != nullptr)
+    return InvokeFunction(*pPlan->m_pFunction, pPlan->m_pDeclaringType, target, pArguments, uiArgumentCount, out_pResult);
+
+  return InvokeProperty(*pPlan->m_pProperty, pPlan->m_pDeclaringType, target, pArguments, uiArgumentCount, out_pResult);
 }
 
 plCSharpStatus plCSharpBindingRuntime::ReleaseValue(plCSharpValue* pValue) const
@@ -651,7 +664,7 @@ void plCSharpBindingRuntime::PluginEventHandler(
       m_bPluginChangesInProgress = true;
       m_bSnapshotValid = false;
       m_uiSchemaHash = 0;
-      m_Snapshot = {};
+      m_pSnapshot.Clear();
       break;
     case plPluginEvent::AfterPluginChanges:
       m_bPluginChangesInProgress = false;
@@ -671,24 +684,50 @@ bool plCSharpBindingRuntime::EnsureSnapshotLocked()
   if (!m_bSnapshotValid)
   {
     PL_PROFILE_SCOPE("CSharp.CreateBindingSnapshot");
-    m_bSnapshotValid = plScriptBindingRegistry::CreateSnapshot(m_Snapshot).Succeeded();
+
+    plSharedPtr<SnapshotData> pData = PL_DEFAULT_NEW(SnapshotData);
+    m_bSnapshotValid = plScriptBindingRegistry::CreateSnapshot(pData->m_Snapshot).Succeeded();
     if (m_bSnapshotValid)
     {
-      m_uiSchemaHash = plScriptBindingManifest::ComputeSchemaHash(m_Snapshot);
+      m_uiSchemaHash = plScriptBindingManifest::ComputeSchemaHash(pData->m_Snapshot);
       m_bSnapshotValid = m_uiSchemaHash != 0;
     }
 
-    if (!m_bSnapshotValid)
+    if (m_bSnapshotValid)
+    {
+      pData->m_Plans.Reserve(pData->m_Snapshot.m_Functions.GetCount() + pData->m_Snapshot.m_Properties.GetCount());
+
+      for (const plScriptBindingFunctionDesc& function : pData->m_Snapshot.m_Functions)
+      {
+        CallPlan& plan = pData->m_Plans[function.m_uiStableId];
+        plan.m_pFunction = &function;
+        plan.m_pDeclaringType = plRTTI::FindTypeByName(function.m_sDeclaringTypeName);
+      }
+
+      // A function and a property never share an id; should one ever collide, the function wins as before.
+      for (const plScriptBindingPropertyDesc& property : pData->m_Snapshot.m_Properties)
+      {
+        if (pData->m_Plans.Contains(property.m_uiStableId))
+          continue;
+
+        CallPlan& plan = pData->m_Plans[property.m_uiStableId];
+        plan.m_pProperty = &property;
+        plan.m_pDeclaringType = plRTTI::FindTypeByName(property.m_sDeclaringTypeName);
+      }
+
+      m_pSnapshot = pData;
+    }
+    else
     {
       m_uiSchemaHash = 0;
-      m_Snapshot.Clear();
+      m_pSnapshot.Clear();
     }
   }
   return m_bSnapshotValid;
 }
 
 plCSharpStatus plCSharpBindingRuntime::InvokeFunction(
-  const plScriptBindingFunctionDesc& function, plCSharpObjectHandle target,
+  const plScriptBindingFunctionDesc& function, const plRTTI* pDeclaringType, plCSharpObjectHandle target,
   const plCSharpValue* pArguments, plUInt32 uiArgumentCount, plCSharpValue* out_pResult)
 {
   void* pInstance = nullptr;
@@ -700,14 +739,13 @@ plCSharpStatus plCSharpBindingRuntime::InvokeFunction(
     if (!IsObjectInCurrentWorld(pInstance, pTargetType))
       return plCSharpStatus::InvalidArgument;
 
-    const plRTTI* pDeclaringType = plRTTI::FindTypeByName(function.m_sDeclaringTypeName);
     if (pTargetType == nullptr || pDeclaringType == nullptr || !pTargetType->IsDerivedFrom(pDeclaringType))
     {
       return plCSharpStatus::InvalidArgument;
     }
   }
 
-  plDynamicArray<plVariant> arguments;
+  plHybridArray<plVariant, 8> arguments;
   arguments.SetCount(function.m_Parameters.GetCount());
   plHybridArray<plInt32, 16> nativeArgumentIndices;
   nativeArgumentIndices.SetCount(function.m_Parameters.GetCount(), -1);
@@ -765,7 +803,7 @@ plCSharpStatus plCSharpBindingRuntime::InvokeFunction(
 }
 
 plCSharpStatus plCSharpBindingRuntime::InvokeProperty(
-  const plScriptBindingPropertyDesc& property, plCSharpObjectHandle target,
+  const plScriptBindingPropertyDesc& property, const plRTTI* pDeclaringType, plCSharpObjectHandle target,
   const plCSharpValue* pArguments, plUInt32 uiArgumentCount, plCSharpValue* out_pResult)
 {
   if (property.m_Category != plPropertyCategory::Member)
@@ -778,7 +816,6 @@ plCSharpStatus plCSharpBindingRuntime::InvokeProperty(
   if (!IsObjectInCurrentWorld(pInstance, pTargetType))
     return plCSharpStatus::InvalidArgument;
 
-  const plRTTI* pDeclaringType = plRTTI::FindTypeByName(property.m_sDeclaringTypeName);
   if (pDeclaringType == nullptr || pTargetType == nullptr || !pTargetType->IsDerivedFrom(pDeclaringType))
     return plCSharpStatus::InvalidArgument;
 
