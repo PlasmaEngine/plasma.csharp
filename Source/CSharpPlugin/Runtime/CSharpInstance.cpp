@@ -590,11 +590,24 @@ plResult plCSharpInstance::SetField(
   {
     plGameObject* pObject = nullptr;
     if (GetWorld() != nullptr && GetWorld()->TryGetObject(value.Get<plGameObjectHandle>(), pObject))
+    {
       resolved = plTypedPointer(pObject, plGetStaticRTTI<plGameObject>());
+
+      // A typed component field receives the picked object's component of that type, or nothing.
+      if (field.m_pComponentType != nullptr)
+      {
+        plComponent* pComponent = nullptr;
+        resolved = pObject->TryGetComponentOfBaseType(field.m_pComponentType, pComponent)
+                     ? plVariant(plTypedPointer(pComponent, pComponent->GetDynamicRTTI()))
+                     : plVariant();
+      }
+    }
     else
+    {
       resolved = plVariant();
+    }
   }
-  else if (field.m_sManagedType == "Plasma.GameObject" && value.IsA<plString>())
+  else if ((field.m_sManagedType == "Plasma.GameObject" || field.m_pComponentType != nullptr) && value.IsA<plString>())
   {
     resolved = plVariant();
   }

@@ -60,6 +60,45 @@ public sealed class GeneratorDiagnosticTests
     }
 
     [Fact]
+    public void ExposesTypedComponentReferences()
+    {
+        const string source = """
+            using Plasma;
+            [PlasmaScript] public sealed partial class Lamp : ComponentScript
+            {
+                [Expose] public TestLampComponent Light { get; set; }
+            }
+            """;
+        const string manifest = """
+            {
+              "manifestVersion": 1, "canonicalIdentityVersion": 1, "schemaHash": "0000000000000001",
+              "types": [
+                { "id": "0000000000000001", "canonicalIdentity": "type:plComponent", "nativeName": "plComponent", "pluginName": "Test",
+                  "parentNativeName": "", "scriptExtensionName": "", "flags": 8, "variantType": 0, "typeVersion": 1, "typeSize": 1,
+                  "canAllocate": false, "hidden": false, "excludedFromScript": false, "attributes": [] },
+                { "id": "0000000000000002", "canonicalIdentity": "type:plTestLampComponent", "nativeName": "plTestLampComponent", "pluginName": "Test",
+                  "parentNativeName": "plComponent", "scriptExtensionName": "", "flags": 8, "variantType": 0, "typeVersion": 1, "typeSize": 1,
+                  "canAllocate": true, "hidden": false, "excludedFromScript": false, "attributes": [] }
+              ],
+              "properties": [], "functions": [], "messages": [], "diagnostics": []
+            }
+            """;
+
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            new ISourceGenerator[] { new BindingManifestGenerator().AsSourceGenerator(), new ScriptDescriptorGenerator().AsSourceGenerator() },
+            new AdditionalText[] { new InMemoryAdditionalText("PlasmaBindings.json", manifest) },
+            (CSharpParseOptions)compilation.SyntaxTrees.Single().Options);
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation generated, out ImmutableArray<Diagnostic> generatorDiagnostics);
+
+        Assert.DoesNotContain(generatorDiagnostics, static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(generated.GetDiagnostics(), static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        string generatedSource = string.Join("\n", driver.GetRunResult().GeneratedTrees.Select(static tree => tree.GetText().ToString()));
+        Assert.Contains("[\"Reference.Component\"] = \"plTestLampComponent\"", generatedSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReportsCodeThatCompilesButDoesNothing()
     {
         var compilation = CreateCompilation("""

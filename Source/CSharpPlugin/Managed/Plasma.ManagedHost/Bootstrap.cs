@@ -1573,13 +1573,18 @@ public static unsafe partial class Bootstrap
         }
     }
 
+    private static bool IsComponentWrapper(Type type) =>
+        type.IsValueType && type.GetInterfaces().Any(static candidate =>
+            candidate.IsGenericType && candidate.GetGenericTypeDefinition() == typeof(INativeComponent<>));
+
     private static object ConvertObjectHandle(CSharpValue value, Type targetType)
     {
+        bool componentWrapper = IsComponentWrapper(targetType);
         NativeObjectKind expectedKind = targetType == typeof(World)
             ? NativeObjectKind.World
             : targetType == typeof(GameObject)
                 ? NativeObjectKind.GameObject
-                : targetType == typeof(Component)
+                : targetType == typeof(Component) || componentWrapper
                     ? NativeObjectKind.Component
                     : NativeObjectKind.ReflectedObject;
         uint encodedKind = ((uint)value.Flags >> 8) & 0xFFu;
@@ -1609,6 +1614,13 @@ public static unsafe partial class Bootstrap
         if (targetType == typeof(Component))
         {
             return new Component(nativeObject);
+        }
+
+        // A typed component field (an engine component wrapper generated into the game assembly).
+        if (componentWrapper)
+        {
+            return Activator.CreateInstance(targetType, nativeObject)
+                ?? throw new InvalidValueException($"Could not create component wrapper '{targetType}'.");
         }
 
         throw new InvalidValueException(

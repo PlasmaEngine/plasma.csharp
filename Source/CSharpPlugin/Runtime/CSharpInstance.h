@@ -13,6 +13,8 @@ struct plCSharpFieldInfo
   plHashedString m_sName;
   plString m_sManagedType;
   plDynamicArray<plHashedString> m_FormerNames;
+  /// For a typed component field: the component type taken from the picked object.
+  const plRTTI* m_pComponentType = nullptr;
 };
 
 /// Keeps a project generation alive while any resource or live script instance still references it.

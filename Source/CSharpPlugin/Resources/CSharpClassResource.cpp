@@ -574,6 +574,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
       if (uiMetadataCount > s_uiMaxFieldEntries)
         return result;
       plDynamicArray<plHashedString> formerNames;
+      plString sComponentType;
       for (plUInt32 metadataIndex = 0;
         metadataIndex < uiMetadataCount; ++metadataIndex)
       {
@@ -586,6 +587,8 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         }
         if (bSelected && sKey.StartsWith("FormerName.") && !sValue.IsEmpty())
           formerNames.ExpandAndGetRef().Assign(sValue);
+        if (bSelected && sKey == "Reference.Component")
+          sComponentType = sValue;
       }
 
       if (bSelected)
@@ -600,6 +603,7 @@ plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
         field.m_sName.Assign(sFieldName);
         field.m_sManagedType = sManagedType;
         field.m_FormerNames = std::move(formerNames);
+        field.m_pComponentType = sComponentType.IsEmpty() ? nullptr : plRTTI::FindTypeByName(sComponentType);
       }
     }
   }

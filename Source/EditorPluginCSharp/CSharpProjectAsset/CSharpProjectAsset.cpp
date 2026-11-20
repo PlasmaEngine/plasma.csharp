@@ -2301,8 +2301,9 @@ plExposedParameters* plCSharpProjectAssetDocument::CreateExposedParameters(
     plScriptFieldDesc desc;
     desc.m_sName = field.m_sName;
 
-    // A GameObject field is picked in the scene; the script component resolves it to a handle.
-    const bool bObjectField = field.m_sManagedType == "Plasma.GameObject";
+    // A GameObject field is picked in the scene; the script component resolves it to a handle. A typed
+    // component field is picked the same way, and the script receives that object's component.
+    const bool bObjectField = field.m_sManagedType == "Plasma.GameObject" || field.m_Metadata.Contains("Reference.Component");
     const plRTTI* pType = bObjectField ? plGetStaticRTTI<plString>() : GetExposedParameterType(field.m_sManagedType, field.m_DefaultValue.m_sKind);
     if (pType == nullptr)
     {
