@@ -444,32 +444,25 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             string propertyName = PropertyName(property.NativeName);
             string bindingName = $"{TypeName(property.DeclaringTypeName)}.{propertyName}";
             string target = extensionReceiverType is null ? "Native" : "self.Native";
+            ValueCodec codec = Classify(type, property.ValueTypeName);
+            bool writable = (property.Flags & 256) == 0;
             RenderDoc(source, "        ", _docs.Member(property.DeclaringTypeName, property.NativeName));
+
             if (extensionReceiverType is not null)
             {
                 source.Append("        public static ").Append(type)
                     .Append(" ").Append(Identifier("Get" + propertyName))
                     .Append("(this global::Plasma.").Append(Identifier(extensionReceiverType))
                     .AppendLine(" self)");
-                source.Append("            => global::Plasma.ReflectedCall.Invoke<")
-                    .Append(type)
-                    .Append(">(0x")
-                    .Append(property.Id)
-                    .Append("UL, \"").Append(Escape(bindingName + " getter"))
-                    .Append("\", ").Append(target)
-                    .AppendLine(", global::System.Array.Empty<object?>(), global::System.Type.EmptyTypes);");
-                if ((property.Flags & 256) == 0)
+                RenderPropertyGetter(source, "        ", property.Id, bindingName, target, codec);
+
+                if (writable)
                 {
                     source.Append("        public static void ")
                         .Append(Identifier("Set" + propertyName))
                         .Append("(this global::Plasma.").Append(Identifier(extensionReceiverType))
                         .Append(" self, ").Append(type).AppendLine(" value)");
-                    source.Append("            => global::Plasma.ReflectedCall.Invoke(0x")
-                        .Append(property.Id).Append("UL, \"")
-                        .Append(Escape(bindingName + " setter")).Append("\", ")
-                        .Append(target)
-                        .AppendLine(", new object?[] { value }, new global::System.Type[] { typeof(" +
-                                    type + ") });");
+                    RenderPropertySetter(source, "        ", property.Id, bindingName, target, codec);
                 }
                 return;
             }
@@ -477,23 +470,189 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             source.Append("        public ").Append(type).Append(" ")
                 .Append(Identifier(propertyName)).AppendLine();
             source.AppendLine("        {");
-            source.Append("            get => global::Plasma.ReflectedCall.Invoke<")
-                .Append(type)
-                .Append(">(0x")
-                .Append(property.Id)
-                .Append("UL, \"").Append(Escape(bindingName + " getter"))
-                .Append("\", ").Append(target)
-                .AppendLine(", global::System.Array.Empty<object?>(), global::System.Type.EmptyTypes);");
-            if ((property.Flags & 256) == 0)
+            source.AppendLine("            get");
+            RenderPropertyGetter(source, "            ", property.Id, bindingName, target, codec);
+            if (writable)
             {
-                source.Append("            set => global::Plasma.ReflectedCall.Invoke(0x")
-                    .Append(property.Id).Append("UL, \"")
-                    .Append(Escape(bindingName + " setter"))
-                    .AppendLine("\", Native, new object?[] { value }, new global::System.Type[] { typeof(" +
-                                type + ") });");
+                source.AppendLine("            set");
+                RenderPropertySetter(source, "            ", property.Id, bindingName, "Native", codec);
             }
             source.AppendLine("        }");
         }
+
+        private static void RenderPropertyGetter(
+            StringBuilder source, string indent, string id, string bindingName, string target, ValueCodec codec)
+        {
+            source.Append(indent).AppendLine("{");
+            source.Append(indent).AppendLine("    global::System.Span<global::Plasma.NativeValue> __plArgs = default;");
+            source.Append(indent).Append("    using global::Plasma.EngineCall __plCall = new(0x").Append(id).Append("UL, \"")
+                .Append(Escape(bindingName + " getter")).Append("\", ").Append(target).AppendLine(", __plArgs);");
+            source.Append(indent).AppendLine("    __plCall.Invoke();");
+            source.Append(indent).Append("    return ").Append(ResultExpression(codec, "-1")).AppendLine(";");
+            source.Append(indent).AppendLine("}");
+        }
+
+        private static void RenderPropertySetter(
+            StringBuilder source, string indent, string id, string bindingName, string target, ValueCodec codec)
+        {
+            source.Append(indent).AppendLine("{");
+            source.Append(indent).AppendLine("    global::System.Span<global::Plasma.NativeValue> __plArgs = stackalloc global::Plasma.NativeValue[1];");
+            source.Append(indent).Append("    using global::Plasma.EngineCall __plCall = new(0x").Append(id).Append("UL, \"")
+                .Append(Escape(bindingName + " setter")).Append("\", ").Append(target).AppendLine(", __plArgs);");
+            RenderArgument(source, indent + "    ", codec, 0, "value", "in");
+            source.Append(indent).AppendLine("    __plCall.Invoke();");
+            source.Append(indent).AppendLine("}");
+        }
+
+        /// <summary>How one value crosses the native boundary: which EngineCall method writes it and reads it back.</summary>
+        private sealed class ValueCodec
+        {
+            public ValueCodec(string kind, string type, string detail)
+            {
+                Kind = kind;
+                Type = type;
+                Detail = detail;
+            }
+
+            public string Kind { get; }
+            public string Type { get; }
+            public string Detail { get; }
+        }
+
+        private ValueCodec Classify(string type, string nativeName)
+        {
+            switch (type)
+            {
+                case "bool":
+                    return new ValueCodec("Bool", type, "");
+                case "sbyte":
+                case "short":
+                case "int":
+                case "long":
+                    return new ValueCodec("Signed", type, "");
+                case "byte":
+                case "ushort":
+                case "uint":
+                case "ulong":
+                    return new ValueCodec("Unsigned", type, "");
+                case "float":
+                case "double":
+                    return new ValueCodec("Floating", type, "");
+                case "string":
+                    return new ValueCodec("String", type, "");
+                case "object":
+                    return new ValueCodec("Variant", type, "");
+                case "global::Plasma.TempHashedString":
+                    return new ValueCodec("Hashed", type, "");
+                case "global::Plasma.Time":
+                case "global::Plasma.Angle":
+                case "global::Plasma.Vec2":
+                case "global::Plasma.Vec2U32":
+                case "global::Plasma.Vec3":
+                case "global::Plasma.Vec4":
+                case "global::Plasma.Quat":
+                case "global::Plasma.Color":
+                case "global::Plasma.Transform":
+                    return new ValueCodec("Bytes", type, type.Substring("global::Plasma.".Length));
+                case "global::Plasma.World":
+                    return new ValueCodec("Object", type, "World");
+                case "global::Plasma.GameObject":
+                    return new ValueCodec("Object", type, "GameObject");
+                case "global::Plasma.Component":
+                    return new ValueCodec("Object", type, "Component");
+            }
+
+            string normalized = nativeName.Trim();
+            if (_typesByName.TryGetValue(normalized, out BindingType? reflected) && (reflected.Flags & (2 | 4)) != 0)
+                return new ValueCodec("Enum", type, "");
+
+            return new ValueCodec("Object", type, ObjectKindOf(normalized));
+        }
+
+        /// <summary>The NativeObjectKind of a reflected class, from its nearest engine object base.</summary>
+        private string ObjectKindOf(string nativeName)
+        {
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            for (BindingType? current = _typesByName.TryGetValue(nativeName, out BindingType? start) ? start : null;
+                 current is not null && visited.Add(current.NativeName);
+                 current = current.ParentNativeName.Length > 0 && _typesByName.TryGetValue(current.ParentNativeName, out BindingType? parent) ? parent : null)
+            {
+                switch (current.NativeName)
+                {
+                    case "plWorld":
+                        return "World";
+                    case "plGameObject":
+                        return "GameObject";
+                    case "plComponent":
+                        return "Component";
+                }
+            }
+
+            return "ReflectedObject";
+        }
+
+        private static void RenderArgument(
+            StringBuilder source, string indent, ValueCodec codec, int index, string expression, string direction)
+        {
+            if (direction == "out")
+            {
+                source.Append(indent).Append("__plCall.Out(").Append(index).AppendLine(");");
+                return;
+            }
+
+            source.Append(indent);
+            switch (codec.Kind)
+            {
+                case "Bool":
+                    source.Append("__plCall.Bool(").Append(index).Append(", ").Append(expression).AppendLine(");");
+                    break;
+                case "Signed":
+                    source.Append("__plCall.Int64(").Append(index).Append(", ").Append(expression).AppendLine(");");
+                    break;
+                case "Unsigned":
+                    source.Append("__plCall.UInt64(").Append(index).Append(", ").Append(expression).AppendLine(");");
+                    break;
+                case "Floating":
+                    source.Append("__plCall.Double(").Append(index).Append(", ").Append(expression).AppendLine(");");
+                    break;
+                case "String":
+                    source.Append("__plCall.String(").Append(index).Append(", ").Append(expression)
+                        .AppendLine(", stackalloc byte[global::Plasma.EngineCall.StringScratchBytes]);");
+                    break;
+                case "Hashed":
+                    source.Append("__plCall.UInt64(").Append(index).Append(", ").Append(expression).AppendLine(".Hash);");
+                    break;
+                case "Bytes":
+                    // A local copy: an inout argument may refer to a field the GC can move during the call.
+                    source.Append(codec.Type).Append(" __plValue").Append(index).Append(" = ").Append(expression).AppendLine(";");
+                    source.Append(indent).Append("__plCall.Bytes(").Append(index).Append(", in __plValue").Append(index)
+                        .Append(", global::Plasma.NativeByteSpanType.").Append(codec.Detail).AppendLine(");");
+                    break;
+                case "Variant":
+                    source.Append("__plCall.Variant(").Append(index).Append(", ").Append(expression).AppendLine(");");
+                    break;
+                case "Enum":
+                    source.Append("__plCall.Int64(").Append(index).Append(", unchecked((long)").Append(expression).AppendLine("));");
+                    break;
+                default:
+                    source.Append("__plCall.Object(").Append(index).Append(", ").Append(expression).AppendLine(".Native);");
+                    break;
+            }
+        }
+
+        private static string ResultExpression(ValueCodec codec, string index) => codec.Kind switch
+        {
+            "Bool" => $"__plCall.ResultBool({index})",
+            "Signed" => $"unchecked(({codec.Type})__plCall.ResultInt64({index}))",
+            "Unsigned" => $"unchecked(({codec.Type})__plCall.ResultUInt64({index}))",
+            "Floating" => $"({codec.Type})__plCall.ResultDouble({index})",
+            "String" => $"__plCall.ResultString({index})",
+            "Hashed" => $"new global::Plasma.TempHashedString(__plCall.ResultUInt64({index}))",
+            "Bytes" => $"__plCall.ResultBytes<{codec.Type}>({index})",
+            "Variant" => $"__plCall.ResultVariant({index})!",
+            "Enum" => $"unchecked(({codec.Type})__plCall.ResultInt64({index}))",
+            _ => $"new {codec.Type}(__plCall.ResultObject(global::Plasma.NativeObjectKind.{codec.Detail}, {index}))",
+        };
 
         private void RenderFunction(
             StringBuilder source,
@@ -592,25 +751,6 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             source.AppendLine(")");
             source.AppendLine("        {");
 
-            source.Append("            object?[] arguments = new object?[] { ");
-            for (int index = 0; index < visibleParameters.Count; ++index)
-            {
-                if (index > 0)
-                {
-                    source.Append(", ");
-                }
-                RenderedParameter parameter = visibleParameters[index];
-                source.Append(parameter.Parameter.Direction == "out"
-                    ? $"default({parameter.Type})"
-                    : Identifier(parameter.Parameter.Name));
-            }
-            source.AppendLine(" };");
-            source.Append("            global::System.Type[] argumentTypes = new global::System.Type[] { ");
-            source.Append(string.Join(
-                ", ",
-                visibleParameters.Select(static parameter => $"typeof({parameter.Type})")));
-            source.AppendLine(" };");
-
             string target = extensionReceiverType is not null
                 ? "self.Native"
                 : instanceMethod
@@ -621,40 +761,40 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 ? TypeName(declaringType.ScriptExtensionName)
                 : TypeName(function.DeclaringTypeName);
             string bindingName = $"{bindingOwner}.{function.PublicName}";
-            if (returnType == "void")
+
+            // Typed call: argument values in stack memory, no boxing, no argument arrays.
+            source.Append("            global::System.Span<global::Plasma.NativeValue> __plArgs = ");
+            source.AppendLine(visibleParameters.Count == 0
+                ? "default;"
+                : $"stackalloc global::Plasma.NativeValue[{visibleParameters.Count}];");
+            source.Append("            using global::Plasma.EngineCall __plCall = new(0x").Append(function.Id)
+                .Append("UL, \"").Append(Escape(bindingName)).Append("\", ").Append(target).AppendLine(", __plArgs);");
+
+            var codecs = new List<ValueCodec>(visibleParameters.Count);
+            for (int index = 0; index < visibleParameters.Count; ++index)
             {
-                source.Append("            global::Plasma.ReflectedCall.Invoke(0x")
-                    .Append(function.Id).Append("UL, \"")
-                    .Append(Escape(bindingName)).Append("\", ").Append(target)
-                    .AppendLine(", arguments, argumentTypes);");
+                RenderedParameter parameter = visibleParameters[index];
+                ValueCodec codec = Classify(parameter.Type, parameter.Parameter.TypeName);
+                codecs.Add(codec);
+                RenderArgument(source, "            ", codec, index, Identifier(parameter.Parameter.Name), parameter.Parameter.Direction);
             }
-            else
-            {
-                source.Append("            ").Append(returnType)
-                    .Append(" result = global::Plasma.ReflectedCall.Invoke<")
-                    .Append(returnType).Append(">(0x").Append(function.Id)
-                    .Append("UL, \"").Append(Escape(bindingName))
-                    .Append("\", ").Append(target)
-                    .AppendLine(", arguments, argumentTypes);");
-            }
+
+            source.AppendLine("            __plCall.Invoke();");
 
             for (int index = 0; index < visibleParameters.Count; ++index)
             {
                 RenderedParameter parameter = visibleParameters[index];
                 if (parameter.Parameter.Direction is "out" or "inout")
                 {
-                    source.Append("            ")
-                        .Append(Identifier(parameter.Parameter.Name))
-                        .Append(" = (")
-                        .Append(parameter.Type)
-                        .Append(")arguments[")
-                        .Append(index)
-                        .AppendLine("]!;");
+                    source.Append("            ").Append(Identifier(parameter.Parameter.Name)).Append(" = ")
+                        .Append(ResultExpression(codecs[index], index.ToString(CultureInfo.InvariantCulture))).AppendLine(";");
                 }
             }
+
             if (returnType != "void")
             {
-                source.AppendLine("            return result;");
+                source.Append("            return ")
+                    .Append(ResultExpression(Classify(returnType, function.ReturnTypeName), "-1")).AppendLine(";");
             }
             source.AppendLine("        }");
         }

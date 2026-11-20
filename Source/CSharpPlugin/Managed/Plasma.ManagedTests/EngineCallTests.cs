@@ -38,32 +38,66 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
         });
     }
 
-    // P9 baseline: bytes one generated-style call allocates. R1 drives this to zero; until then it is reported.
+    // The generated typed call allocates nothing for numbers, vectors and short strings.
+    // The reflected path it replaced is measured alongside for comparison.
     [Fact]
-    public void ReportsTheManagedCostOfAnEngineCall()
+    public void TypedEngineCallsDoNotAllocate()
     {
         WithStub(() =>
         {
-            const int Calls = 10_000;
-            for (int i = 0; i < 100; ++i)
-                CallLikeGeneratedCode();
+            (long typedBytes, double typedMicroseconds) = Measure(TypedCall);
+            (long reflectedBytes, double reflectedMicroseconds) = Measure(ReflectedCallOfTheSameShape);
+            (long vectorBytes, _) = Measure(TypedVectorCall);
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            for (int i = 0; i < Calls; ++i)
-                CallLikeGeneratedCode();
-            watch.Stop();
-            long bytesPerCall = (GC.GetAllocatedBytesForCurrentThread() - before) / Calls;
-
-            output.WriteLine($"Engine call (string, bool) -> float: {bytesPerCall} bytes allocated, {watch.Elapsed.TotalMilliseconds * 1000.0 / Calls:F3} us per call (managed side only).");
-            Assert.True(bytesPerCall > 0, "Update this test into a zero-allocation assertion once typed generated calls land.");
+            output.WriteLine($"Engine call (string, bool) -> float, managed side: typed {typedBytes} bytes, {typedMicroseconds:F3} us; reflected {reflectedBytes} bytes, {reflectedMicroseconds:F3} us.");
+            Assert.Equal(0, typedBytes);
+            Assert.Equal(0, vectorBytes);
+            Assert.True(reflectedBytes > 0);
         });
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static float CallLikeGeneratedCode()
+    private static (long BytesPerCall, double MicrosecondsPerCall) Measure(Func<float> call)
     {
-        // The exact shape the binding generator emits today for InputComponent.GetCurrentInputState.
+        const int Calls = 10_000;
+        for (int i = 0; i < 100; ++i)
+            call();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < Calls; ++i)
+            call();
+        watch.Stop();
+        return ((GC.GetAllocatedBytesForCurrentThread() - before) / Calls, watch.Elapsed.TotalMilliseconds * 1000.0 / Calls);
+    }
+
+    // The shape the binding generator emits for InputComponent.GetCurrentInputState.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static float TypedCall()
+    {
+        Span<NativeValue> __plArgs = stackalloc NativeValue[2];
+        using EngineCall __plCall = new(FloatCall, "InputComponent.GetCurrentInputState", default, __plArgs);
+        __plCall.String(0, "Left", stackalloc byte[EngineCall.StringScratchBytes]);
+        __plCall.Bool(1, false);
+        __plCall.Invoke();
+        return (float)__plCall.ResultDouble(-1);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static float TypedVectorCall()
+    {
+        var position = new Vec3(1, 2, 3);
+        Span<NativeValue> __plArgs = stackalloc NativeValue[1];
+        using EngineCall __plCall = new(FloatCall, "GameObject.SetLocalPosition", default, __plArgs);
+        Vec3 __plValue0 = position;
+        __plCall.Bytes(0, in __plValue0, NativeByteSpanType.Vec3);
+        __plCall.Invoke();
+        return 0;
+    }
+
+    // The shape the generator emitted before typed calls.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static float ReflectedCallOfTheSameShape()
+    {
         object?[] arguments = new object?[] { "Left", false };
         Type[] argumentTypes = new Type[] { typeof(string), typeof(bool) };
         return ReflectedCall.Invoke<float>(FloatCall, "InputComponent.GetCurrentInputState", default, arguments, argumentTypes);

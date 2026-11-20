@@ -125,7 +125,12 @@ public static unsafe class ReflectedCall
         }
     }
 
-    private static string DescribeFailure(
+    internal static NativeValue ToNativeValue(object? value, Type expectedType, ICollection<IDisposable> leases) =>
+        ToNative(value, expectedType, leases);
+
+    internal static object? FromNativeValue(NativeValue value, Type expectedType) => FromNative(value, expectedType);
+
+    internal static string DescribeFailure(
         string apiName,
         ulong functionId,
         NativeCallStatus status)
