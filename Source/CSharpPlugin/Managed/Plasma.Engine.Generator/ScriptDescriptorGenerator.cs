@@ -1020,9 +1020,13 @@ public sealed class ScriptDescriptorGenerator : IIncrementalGenerator
             .Append("\", typeof(")
             .Append(field.QualifiedType)
             .AppendLine("),");
-        source.Append("                                new ")
+        // One default instance per script type, shared by all of its fields: a script whose constructor or
+        // field initializers have side effects runs them once, not once per exposed field.
+        source.Append("                                global::Plasma.ScriptDefaults<")
             .Append(script.QualifiedName)
-            .Append("().")
+            .Append(">.Get(static () => new ")
+            .Append(script.QualifiedName)
+            .Append("()).")
             .Append(identifier)
             .AppendLine(",");
         source.Append("                                static baseInstance => ((")

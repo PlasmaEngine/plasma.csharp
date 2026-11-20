@@ -34,7 +34,7 @@ public sealed class SaveGameResult
 /// and Dispose during shutdown/script reload. Saving captures the world of the current script call.
 /// Continuations are completed by Update on the engine thread; no worker touches managed game state.
 /// </summary>
-public sealed class SaveGame : IDisposable
+public sealed class SaveGame : IDisposable, IOwnedService
 {
     private const string Library = "plCSharpPlugin";
     private readonly int _thread = Environment.CurrentManagedThreadId;
@@ -53,17 +53,19 @@ public sealed class SaveGame : IDisposable
     /// <summary>Gets a client for the active game state's initialized save service.</summary>
     public static SaveGame FromGameState(ComponentScript? owner = null) => new("", owner);
 
+    /// <summary>Opens a client. Created in a script callback, it belongs to that script unless another
+    /// <paramref name="owner"/> is given: the script calls <see cref="Update"/> each frame and disposes it.</summary>
     public SaveGame(string project, ComponentScript? owner = null)
     {
         Check(NativeOpen(project, out _session));
-        _owner = owner;
-        Clients.Add(this);
+        _owner = owner ?? ComponentScript.Current;
+        _owner?.Own(this);
+        if (_owner is null)
+            Clients.Add(this);
     }
 
-    internal static void DisposeOwned(ComponentScript owner)
-    {
-        foreach (var client in Clients.Where(c => ReferenceEquals(c._owner, owner)).ToArray()) client.Dispose();
-    }
+    void IOwnedService.Pump() => Update();
+
     internal static void ResetAll()
     {
         foreach (var client in Clients.ToArray()) client.Dispose();
@@ -147,6 +149,7 @@ public sealed class SaveGame : IDisposable
         NativeClose(_session);
         _session = 0;
         Clients.Remove(this);
+        _owner?.Release(this);
         var pending = _pending.Values.ToArray(); _pending.Clear();
         foreach (var job in pending) { job.Registration.Dispose(); job.Completion.TrySetCanceled(); }
     }

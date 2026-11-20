@@ -98,9 +98,7 @@ public abstract partial class ComponentScript
         // Each step runs even when an earlier one throws, so the native context is always released.
         DetachStep("timers and waits", () => _scheduler?.Close());
         DetachStep("lifetime cancellation", _lifetime.Cancel);
-        DetachStep("save game clients", () => SaveGame.DisposeOwned(this));
-        DetachStep("settings clients", () => GameSettings.DisposeOwned(this));
-        DetachStep("platform clients", () => Platform.DisposeOwned(this));
+        DetachStep("save game, settings and platform clients", DisposeServices);
 
         Owner = default;
         World = default;

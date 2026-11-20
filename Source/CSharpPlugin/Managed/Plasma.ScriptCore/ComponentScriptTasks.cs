@@ -9,6 +9,58 @@ public abstract partial class ComponentScript
 {
     private ScriptScheduler? _scheduler;
     private bool _updateDispatch;
+    private List<IOwnedService>? _services;
+
+    [ThreadStatic]
+    private static ComponentScript? s_current;
+
+    /// <summary>The script whose callback is running on this thread, if any.</summary>
+    internal static ComponentScript? Current => s_current;
+
+    /// <summary>Takes ownership of a save-game, settings or platform client: it is updated at the start of
+    /// this script's Update and disposed when the script goes away.</summary>
+    internal void Own(IOwnedService service) => (_services ??= []).Add(service);
+
+    internal void Release(IOwnedService service) => _services?.Remove(service);
+
+    private void PumpServices()
+    {
+        if (_services is null)
+            return;
+
+        foreach (IOwnedService service in _services.ToArray())
+        {
+            try
+            {
+                service.Pump();
+            }
+            catch (Exception exception)
+            {
+                ReportFailure($"Updating a {service.GetType().Name} client of '{GetType().FullName}' failed", exception);
+            }
+        }
+    }
+
+    private void DisposeServices()
+    {
+        if (_services is null)
+            return;
+
+        // Each client removes itself from the list as it is disposed.
+        foreach (IOwnedService service in _services.ToArray())
+        {
+            try
+            {
+                service.Dispose();
+            }
+            catch (Exception exception)
+            {
+                ReportFailure($"Releasing a {service.GetType().Name} client of '{GetType().FullName}' failed", exception);
+            }
+        }
+
+        _services.Clear();
+    }
 
     /// <summary>Game time seen by this script: the sum of its Update deltas. It does not advance while the game is paused.</summary>
     public Time GameTime => _scheduler?.Now ?? Time.Zero;
@@ -80,15 +132,27 @@ public abstract partial class ComponentScript
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void __BeginUpdate(Time deltaTime)
     {
-        __DrainPostedActions();
-        _scheduler?.Advance(deltaTime);
+        ComponentScript? previous = s_current;
+        s_current = this;
+        try
+        {
+            __DrainPostedActions();
+            PumpServices();
+            _scheduler?.Advance(deltaTime);
+        }
+        finally
+        {
+            s_current = previous;
+        }
     }
 
-    /// <summary>Makes this script's synchronization context current for a host callback, so async code
-    /// started there resumes in this script's Update. Does nothing for scripts without Update.</summary>
+    /// <summary>Marks this script as the one running for a host callback: clients it creates become its own,
+    /// and async code started there resumes in its Update (for scripts with Update).</summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     public ScriptContextScope __EnterContext() =>
-        new(_updateDispatch ? (_scheduler ??= new ScriptScheduler(ReportFailure)).Context : null);
+        new(this, _updateDispatch ? (_scheduler ??= new ScriptScheduler(ReportFailure)).Context : null);
+
+    internal static void SetCurrent(ComponentScript? script) => s_current = script;
 
     private ScriptScheduler Scheduler(string api)
     {
@@ -105,15 +169,19 @@ public abstract partial class ComponentScript
         ReportFailure($"An async method of '{GetType().FullName}' failed", task.Exception?.InnerExceptions.Count == 1 ? task.Exception.InnerException! : task.Exception!);
 }
 
-/// <summary>Restores the previous synchronization context when a host callback ends.</summary>
+/// <summary>Restores the previous running script and synchronization context when a host callback ends.</summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public readonly ref struct ScriptContextScope
 {
+    private readonly ComponentScript? _previousScript;
     private readonly SynchronizationContext? _previous;
     private readonly bool _active;
 
-    internal ScriptContextScope(SynchronizationContext? context)
+    internal ScriptContextScope(ComponentScript script, SynchronizationContext? context)
     {
+        _previousScript = ComponentScript.Current;
+        ComponentScript.SetCurrent(script);
+
         _active = context is not null;
         _previous = SynchronizationContext.Current;
         if (_active)
@@ -122,7 +190,24 @@ public readonly ref struct ScriptContextScope
 
     public void Dispose()
     {
+        ComponentScript.SetCurrent(_previousScript);
         if (_active)
             SynchronizationContext.SetSynchronizationContext(_previous);
     }
+}
+
+/// <summary>The instance generated descriptors read exposed-field defaults from: created once per script type,
+/// never attached to an object and never given lifecycle calls.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public static class ScriptDefaults<T> where T : class
+{
+    private static T? s_instance;
+
+    public static T Get(Func<T> create) => s_instance ??= create();
+}
+
+/// <summary>A client a script owns: updated at the start of its Update, disposed when it goes away.</summary>
+internal interface IOwnedService : IDisposable
+{
+    void Pump();
 }

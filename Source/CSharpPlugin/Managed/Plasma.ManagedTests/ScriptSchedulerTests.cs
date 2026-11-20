@@ -137,6 +137,46 @@ public sealed class ScriptSchedulerTests
         Assert.Equal(1, ran);
     }
 
+    private sealed class FakeClient : IOwnedService
+    {
+        public FakeClient()
+        {
+            Owner = ComponentScript.Current;
+            Owner?.Own(this);
+        }
+
+        public ComponentScript? Owner { get; }
+        public int Pumped { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public void Pump() => ++Pumped;
+
+        public void Dispose()
+        {
+            Disposed = true;
+            Owner?.Release(this);
+        }
+    }
+
+    [Fact]
+    public void AClientCreatedInACallbackBelongsToThatScript()
+    {
+        Script script = CreateScript();
+        FakeClient client;
+        using (script.__EnterContext())
+            client = new FakeClient();
+
+        Assert.Same(script, client.Owner);
+        Assert.Null(ComponentScript.Current);
+
+        Frame(script);
+        Frame(script);
+        Assert.Equal(2, client.Pumped);
+
+        script.__Detach();
+        Assert.True(client.Disposed);
+    }
+
     [Fact]
     public void AScriptWithoutUpdateIsToldToAddOne()
     {
