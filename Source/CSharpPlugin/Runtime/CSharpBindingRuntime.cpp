@@ -23,20 +23,6 @@ static_assert(sizeof(plTransform) == 40);
 
 namespace
 {
-  static plCSharpValueFlags EncodeObjectKind(plCSharpNativeObjectKind kind)
-  {
-    return static_cast<plCSharpValueFlags>(
-      static_cast<plUInt32>(kind) << 8);
-  }
-
-  static plCSharpNativeObjectKind DecodeObjectKind(plCSharpValueFlags flags)
-  {
-    const plUInt32 uiKind = (static_cast<plUInt32>(flags) >> 8) & 0xFFu;
-    return uiKind >= static_cast<plUInt32>(plCSharpNativeObjectKind::World) &&
-               uiKind <= static_cast<plUInt32>(plCSharpNativeObjectKind::ReflectedObject)
-             ? static_cast<plCSharpNativeObjectKind>(uiKind)
-             : plCSharpNativeObjectKind::Invalid;
-  }
 
   static bool IsObjectInCurrentWorld(
     void* pObject, const plRTTI* pObjectType)
@@ -94,7 +80,7 @@ namespace
 
     out_value = {};
     out_value.m_Kind = plCSharpValueKind::ObjectHandle;
-    out_value.m_Flags = EncodeObjectKind(kind);
+    out_value.m_Flags = plCSharpEncodeObjectKind(kind);
     out_value.m_uiPayload0 = handle.m_uiValue;
     out_value.m_uiPayload1 = handle.m_uiGeneration;
     return PL_SUCCESS;
@@ -193,7 +179,7 @@ namespace
         plCSharpObjectHandle handle;
         handle.m_uiValue = value.m_uiPayload0;
         handle.m_uiGeneration = value.m_uiPayload1;
-        handle.m_uiKind = static_cast<plUInt32>(DecodeObjectKind(value.m_Flags));
+        handle.m_uiKind = static_cast<plUInt32>(plCSharpDecodeObjectKind(value.m_Flags));
 
         if (handle.m_uiKind == 0 && pExpectedType != nullptr)
         {
@@ -607,6 +593,8 @@ plCSharpStatus plCSharpBindingRuntime::InvokeReflected(plUInt64 uiBindingId,
   plCSharpObjectHandle target, const plCSharpValue* pArguments,
   plUInt32 uiArgumentCount, plCSharpValue* out_pResult)
 {
+  PL_PROFILE_SCOPE("CSharp.EngineCall");
+
   if (out_pResult == nullptr || (uiArgumentCount > 0 && pArguments == nullptr))
     return plCSharpStatus::InvalidArgument;
   if (plCSharpExecutionScope::GetCurrentWorld() == nullptr)

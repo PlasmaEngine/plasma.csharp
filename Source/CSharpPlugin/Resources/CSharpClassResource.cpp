@@ -360,6 +360,8 @@ plResourceLoadDesc plCSharpClassResource::UnloadData(Unload WhatToUnload)
 
 plResourceLoadDesc plCSharpClassResource::UpdateContent(plStreamReader* pStream)
 {
+  PL_PROFILE_SCOPE("CSharp.LoadScriptClass");
+
   plResourceLoadDesc result;
   result.m_State = plResourceState::LoadedResourceMissing;
   result.m_uiQualityLevelsDiscardable = 0;

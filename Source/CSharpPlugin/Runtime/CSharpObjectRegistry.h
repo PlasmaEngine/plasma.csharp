@@ -20,6 +20,21 @@ enum class plCSharpNativeObjectKind : plUInt32
   ReflectedObject,
 };
 
+/// An object handle's kind travels in bits 8..15 of its value flags.
+inline plCSharpValueFlags plCSharpEncodeObjectKind(plCSharpNativeObjectKind kind)
+{
+  return static_cast<plCSharpValueFlags>(static_cast<plUInt32>(kind) << 8);
+}
+
+inline plCSharpNativeObjectKind plCSharpDecodeObjectKind(plCSharpValueFlags flags)
+{
+  const plUInt32 uiKind = (static_cast<plUInt32>(flags) >> 8) & 0xFFu;
+  return uiKind >= static_cast<plUInt32>(plCSharpNativeObjectKind::World) &&
+             uiKind <= static_cast<plUInt32>(plCSharpNativeObjectKind::ReflectedObject)
+           ? static_cast<plCSharpNativeObjectKind>(uiKind)
+           : plCSharpNativeObjectKind::Invalid;
+}
+
 /// Generation-checked handles prevent collectible managed code from retaining native pointers.
 class PL_CSHARPPLUGIN_DLL plCSharpObjectRegistry
 {

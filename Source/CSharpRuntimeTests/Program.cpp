@@ -1,6 +1,8 @@
 #include <CSharpPlugin/Hosting/CSharpHost.h>
 #include <CSharpPlugin/Runtime/CSharpProjectRuntime.h>
 #include <CSharpPlugin/Runtime/CSharpInstance.h>
+#include <CSharpPlugin/Runtime/CSharpObjectRegistry.h>
+#include <Core/Scripting/ScriptWorldModule.h>
 #include <Core/Scripting/ScriptComponent.h>
 #include <Core/World/World.h>
 #include <Core/Scripting/ScriptAttributes.h>
@@ -38,6 +40,89 @@ namespace
     const plVariant* value = reader.GetTopLevelObject().GetValue("Accumulator");
     return Require(value != nullptr && value->ConvertTo<double>() == expected, "Updated lifecycle dispatch and retained accumulator");
   }
+
+  /// A full borrowed-handle list releases handles of deleted objects before refusing a new one.
+  plResult TestFullHandleListPrunesDeletedObjects(plWorld& ref_world, plDynamicArray<plCSharpObjectHandle>& ref_borrowed)
+  {
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+
+    plDynamicArray<plGameObjectHandle> objects;
+    for (plUInt32 i = 0; i < 4096; ++i)
+    {
+      plGameObject* pObject = nullptr;
+      objects.PushBack(ref_world.CreateObject(plGameObjectDesc(), pObject));
+      const plCSharpObjectHandle handle = registry.RegisterObject(pObject, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
+      PL_SUCCEED_OR_RETURN(Require(plCSharpExecutionScope::TrackBorrowedHandle(handle), "Track a handle below the limit"));
+    }
+
+    for (const plGameObjectHandle& hObject : objects)
+      ref_world.DeleteObjectNow(hObject);
+
+    plGameObject* pLate = nullptr;
+    ref_world.CreateObject(plGameObjectDesc(), pLate);
+    const plCSharpObjectHandle late = registry.RegisterObject(pLate, plGetStaticRTTI<plGameObject>(), plCSharpNativeObjectKind::GameObject);
+    PL_SUCCEED_OR_RETURN(Require(plCSharpExecutionScope::TrackBorrowedHandle(late), "A full list made room by releasing deleted objects"));
+    return Require(ref_borrowed.GetCount() == 1, "Only the live object's handle remains");
+  }
+
+  /// Handle-registry and execution-scope behaviour that needs no managed code or fixture.
+  plResult TestHandleRegistry()
+  {
+    auto& registry = plCSharpObjectRegistry::GetSingleton();
+    plDynamicArray<plCSharpObjectHandle> borrowed;
+    plCSharpObjectHandle reflected;
+
+    {
+      plWorldDesc worldDesc("CSharp handle registry");
+      plWorld world(worldDesc);
+      PL_LOCK(world.GetWriteMarker());
+      plCSharpExecutionScope scope(&world, &borrowed);
+
+      PL_SUCCEED_OR_RETURN(TestFullHandleListPrunesDeletedObjects(world, borrowed));
+
+      plScriptWorldModule* pModule = world.GetOrCreateModule<plScriptWorldModule>();
+      reflected = registry.RegisterObject(pModule, pModule->GetDynamicRTTI(), plCSharpNativeObjectKind::ReflectedObject);
+      void* pObject = nullptr;
+      const plRTTI* pType = nullptr;
+      PL_SUCCEED_OR_RETURN(Require(registry.ResolveObject(reflected, pObject, pType) == plCSharpStatus::Success, "A world module resolves while its world exists"));
+    }
+
+    // A raw-pointer handle must not outlive the world it was obtained in.
+    {
+      void* pObject = nullptr;
+      const plRTTI* pType = nullptr;
+      PL_SUCCEED_OR_RETURN(Require(registry.ResolveObject(reflected, pObject, pType) != plCSharpStatus::Success, "A world module handle stops resolving after its world is destroyed"));
+    }
+
+    registry.UnregisterObject(reflected);
+    for (const plCSharpObjectHandle& handle : borrowed)
+      registry.UnregisterObject(handle);
+
+    // A script instance destroyed during its own call must not be restored as the current handle list
+    // by any scope that ends afterwards, including a re-entrant one into the same instance.
+    {
+      plDynamicArray<plCSharpObjectHandle> destroyed;
+      plDynamicArray<plCSharpObjectHandle> other;
+      plCSharpObjectHandle probe;
+      probe.m_uiValue = 1;
+      probe.m_uiGeneration = 1;
+      probe.m_uiKind = static_cast<plUInt32>(plCSharpNativeObjectKind::GameObject);
+
+      plCSharpExecutionScope outer(nullptr, &destroyed);
+      {
+        plCSharpExecutionScope inner(nullptr, &other);
+        plCSharpExecutionScope reentrant(nullptr, &destroyed);
+        plCSharpExecutionScope::ForgetBorrowedHandles(&destroyed);
+        PL_SUCCEED_OR_RETURN(Require(!plCSharpExecutionScope::TrackBorrowedHandle(probe), "A forgotten list is not the current one"));
+      }
+
+      PL_SUCCEED_OR_RETURN(Require(!plCSharpExecutionScope::TrackBorrowedHandle(probe), "Ending later scopes does not restore a forgotten list"));
+      PL_SUCCEED_OR_RETURN(Require(destroyed.IsEmpty(), "Nothing was written into the forgotten list"));
+    }
+
+    plLog::Success("PASS: handle registry pruning, world-bound reflected handles and forgotten handle lists.");
+    return PL_SUCCESS;
+  }
 }
 
 class plCSharpRuntimeTests : public plApplication
@@ -58,6 +143,12 @@ public:
   }
   plResult Test()
   {
+    PL_SUCCEED_OR_RETURN(TestHandleRegistry());
+
+    // The fixture-free checks above can run alone with -registryOnly.
+    if (plCommandLineUtils::GetGlobalInstance()->GetBoolOption("-registryOnly"))
+      return PL_SUCCESS;
+
     const plString root = plCommandLineUtils::GetGlobalInstance()->GetStringOption("-fixture");
     PL_SUCCEED_OR_RETURN(Require(!root.IsEmpty(), "Specify the managed BrickBreaker fixture with -fixture"));
     plCSharpHost host;

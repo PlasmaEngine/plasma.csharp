@@ -297,6 +297,7 @@ void plCSharpMessageHandler::Dispatch(
     return;
 
   plScriptCallScope scope(pCSharpInstance, pComponent->GetScriptType(), ref_msg.GetDynamicRTTI()->GetTypeName().GetStartPointer());
+  PL_PROFILE_SCOPE("CSharp.DispatchMessage");
 
   if (ref_msg.GetDynamicRTTI() == plGetStaticRTTI<plMsgDeliverCSharpMsg>())
   {
