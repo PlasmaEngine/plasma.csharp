@@ -155,19 +155,32 @@ internal unsafe struct Utf8Span
 
 public readonly partial record struct World(NativeObject Native)
 {
+    /// <summary>Whether this refers to a world at all. It does not check that the world still exists; use <see cref="IsAlive"/>.</summary>
     public bool IsValid => Native.Kind == NativeObjectKind.World && Native.IsValid;
+
+    /// <summary>Whether the world still exists. Asks the engine, so call it from a script callback.</summary>
+    public bool IsAlive => IsValid && Native.IsAlive;
 }
 
 public readonly partial record struct GameObject(NativeObject Native)
 {
+    /// <summary>Whether this refers to an object at all. It does not check that the object still exists; use <see cref="IsAlive"/>.</summary>
     public bool IsValid => Native.Kind == NativeObjectKind.GameObject && Native.IsValid;
+
+    /// <summary>Whether the object still exists. Asks the engine, so call it from a script callback.</summary>
+    public bool IsAlive => IsValid && Native.IsAlive;
 }
 
 public readonly partial record struct Component(NativeObject Native) : INativeComponent<Component>
 {
     public static string NativeTypeName => "plComponent";
     public static Component FromNative(NativeObject native) => new(native);
+
+    /// <summary>Whether this refers to a component at all. It does not check that the component still exists; use <see cref="IsAlive"/>.</summary>
     public bool IsValid => Native.Kind == NativeObjectKind.Component && Native.IsValid;
+
+    /// <summary>Whether the component still exists. Asks the engine, so call it from a script callback.</summary>
+    public bool IsAlive => IsValid && Native.IsAlive;
 }
 
 public readonly record struct ResourceHandle<T>(ulong Id, ulong Generation)

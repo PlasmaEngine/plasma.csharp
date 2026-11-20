@@ -86,6 +86,12 @@ namespace
     return PL_SUCCESS;
   }
 
+  /// A call on an object that was handed out but no longer exists says so; an empty handle is a plain argument error.
+  static plCSharpStatus TargetFailure(plCSharpObjectHandle target)
+  {
+    return target.m_uiValue != 0 ? plCSharpStatus::InstanceNotFound : plCSharpStatus::InvalidArgument;
+  }
+
   template <typename T>
   static plResult ReadTaggedBytes(const plCSharpValue& value, const void* pData, plVariant& out_value)
   {
@@ -735,7 +741,7 @@ plCSharpStatus plCSharpBindingRuntime::InvokeFunction(
   {
     const plRTTI* pTargetType = nullptr;
     if (plCSharpObjectRegistry::GetSingleton().ResolveObject(target, pInstance, pTargetType) != plCSharpStatus::Success)
-      return plCSharpStatus::InvalidArgument;
+      return TargetFailure(target);
     if (!IsObjectInCurrentWorld(pInstance, pTargetType))
       return plCSharpStatus::InvalidArgument;
 
@@ -812,7 +818,7 @@ plCSharpStatus plCSharpBindingRuntime::InvokeProperty(
   void* pInstance = nullptr;
   const plRTTI* pTargetType = nullptr;
   if (plCSharpObjectRegistry::GetSingleton().ResolveObject(target, pInstance, pTargetType) != plCSharpStatus::Success)
-    return plCSharpStatus::InvalidArgument;
+    return TargetFailure(target);
   if (!IsObjectInCurrentWorld(pInstance, pTargetType))
     return plCSharpStatus::InvalidArgument;
 

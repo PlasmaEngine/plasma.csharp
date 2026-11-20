@@ -296,6 +296,9 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     source.Append("        public static ").Append(Identifier(typeName)).AppendLine(" FromNative(global::Plasma.NativeObject native) => new(native);");
                 }
 
+                if (!wellKnown)
+                    RenderLivenessMembers(source, type);
+
                 foreach (BindingProperty property in GetInheritedProperties(type))
                 {
                     RenderProperty(source, property, wellKnown ? typeName : null);
@@ -480,6 +483,27 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             source.AppendLine("        }");
         }
 
+        /// <summary>IsValid and IsAlive on a generated wrapper, unless an engine member already uses the name.</summary>
+        private void RenderLivenessMembers(StringBuilder source, BindingType type)
+        {
+            var taken = new HashSet<string>(
+                GetInheritedProperties(type).Select(property => PropertyName(property.NativeName))
+                    .Concat(GetInheritedFunctions(type).Select(static function => function.PublicName)),
+                StringComparer.Ordinal);
+
+            if (!taken.Contains("IsValid"))
+            {
+                source.AppendLine("        /// <summary>Whether this refers to an object at all. It does not check that the object still exists; use <see cref=\"IsAlive\"/>.</summary>");
+                source.AppendLine("        public bool IsValid => Native.IsValid;");
+            }
+
+            if (!taken.Contains("IsAlive"))
+            {
+                source.AppendLine("        /// <summary>Whether the object still exists in the engine. Asks the engine, so call it from a script callback.</summary>");
+                source.AppendLine("        public bool IsAlive => Native.IsAlive;");
+            }
+        }
+
         private static void RenderPropertyGetter(
             StringBuilder source, string indent, string id, string bindingName, string target, ValueCodec codec)
         {
@@ -542,6 +566,8 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                     return new ValueCodec("String", type, "");
                 case "object":
                     return new ValueCodec("Variant", type, "");
+                case "global::Plasma.Variant":
+                    return new ValueCodec("Any", type, "");
                 case "global::Plasma.TempHashedString":
                     return new ValueCodec("Hashed", type, "");
                 case "global::Plasma.Time":
@@ -631,6 +657,10 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 case "Variant":
                     source.Append("__plCall.Variant(").Append(index).Append(", ").Append(expression).AppendLine(");");
                     break;
+                case "Any":
+                    source.Append("__plCall.Any(").Append(index).Append(", ").Append(expression)
+                        .AppendLine(", stackalloc byte[global::Plasma.EngineCall.StringScratchBytes]);");
+                    break;
                 case "Enum":
                     source.Append("__plCall.Int64(").Append(index).Append(", unchecked((long)").Append(expression).AppendLine("));");
                     break;
@@ -650,6 +680,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
             "Hashed" => $"new global::Plasma.TempHashedString(__plCall.ResultUInt64({index}))",
             "Bytes" => $"__plCall.ResultBytes<{codec.Type}>({index})",
             "Variant" => $"__plCall.ResultVariant({index})!",
+            "Any" => $"__plCall.ResultAny({index})",
             "Enum" => $"unchecked(({codec.Type})__plCall.ResultInt64({index}))",
             _ => $"new {codec.Type}(__plCall.ResultObject(global::Plasma.NativeObjectKind.{codec.Detail}, {index}))",
         };
@@ -845,7 +876,7 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 case "plConstCharPtr":
                     return "string";
                 case "plVariant":
-                    return "object";
+                    return "global::Plasma.Variant";
                 case "plTempHashedString":
                     return "global::Plasma.TempHashedString";
                 case "plTime":
@@ -1002,6 +1033,16 @@ public sealed class BindingManifestGenerator : IIncrementalGenerator
                 value.TryGetProperty("value", out JsonElement wrapped))
             {
                 value = wrapped;
+            }
+
+            // A struct parameter can only default to default: an engine default of null or zero maps to it,
+            // anything else leaves the parameter required.
+            if (type == "global::Plasma.Variant")
+            {
+                return value.ValueKind == JsonValueKind.Null ||
+                       (value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double variantNumber) && variantNumber == 0.0)
+                    ? "default"
+                    : null;
             }
 
             if (value.ValueKind == JsonValueKind.Number)

@@ -111,7 +111,12 @@ public unsafe ref struct EngineCall
             Payload1 = (ulong)sizeof(T),
         };
 
-    /// <summary>An untyped (variant) argument, converted by type at run time.</summary>
+    /// <summary>An "any value" argument. A string is encoded into <c>scratch</c>, stack memory of the
+    /// generated method; numbers, vectors and object references need none.</summary>
+    public void Any(int index, global::Plasma.Variant value, scoped Span<byte> scratch) =>
+        _arguments[index] = value.ToNative(scratch, ref _keepAlive);
+
+    /// <summary>An untyped argument of a type known only at run time.</summary>
     public void Variant(int index, object? value)
     {
         _variantLeases ??= [];
@@ -189,6 +194,8 @@ public unsafe ref struct EngineCall
     }
 
     public readonly object? ResultVariant(int index = -1) => ReflectedCall.FromNativeValue(Value(index), typeof(object));
+
+    public readonly global::Plasma.Variant ResultAny(int index = -1) => global::Plasma.Variant.FromNative(Value(index));
 
     // ---------------------------------------------------------------- cleanup
 

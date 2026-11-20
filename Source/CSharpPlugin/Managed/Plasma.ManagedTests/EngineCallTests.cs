@@ -40,6 +40,55 @@ public sealed unsafe class EngineCallTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void VariantConvertsTheWayExistingScriptsUseIt()
+    {
+        // Patterns from GameSDK and BrickBreaker: implicit arguments, Convert.ToX and casts on results.
+        Variant fromInt = 5;
+        Variant fromUInt = 7u;
+        Variant fromBool = true;
+        Variant fromString = "Combat";
+        Variant fromVector = new Vec3(1, 2, 3);
+
+        Assert.Equal(5, (int)fromInt);
+        Assert.Equal(5f, Convert.ToSingle(fromInt));
+        Assert.Equal(7u, Convert.ToUInt32((object)fromUInt));
+        Assert.True(Convert.ToBoolean(fromBool));
+        Assert.Equal("Combat", fromString.ToString());
+        Assert.Equal(new Vec3(1, 2, 3), (Vec3)fromVector);
+        Assert.Throws<InvalidCastException>(() => (Vec3)fromInt);
+    }
+
+    [Fact]
+    public void AVariantCrossesTheBoundaryWithoutBoxing()
+    {
+        WithStub(() =>
+        {
+            Span<NativeValue> __plArgs = stackalloc NativeValue[1];
+            using (EngineCall __plCall = new(RecordArgumentCall, "Test.SetVariant", default, __plArgs))
+            {
+                __plCall.Any(0, new Vec3(4, 5, 6), stackalloc byte[EngineCall.StringScratchBytes]);
+                __plCall.Invoke();
+            }
+
+            Assert.Equal(CSharpValueKind.ByteSpan, s_lastArgument.Kind);
+            Assert.Equal((uint)NativeByteSpanType.Vec3, ((uint)s_lastArgument.Flags >> 16) & 0xFFu);
+            Assert.NotEqual(0u, (uint)s_lastArgument.Flags & (uint)NativeValueFlags.InlineBytes);
+
+            using (EngineCall __plCall = new(VectorResultCall, "Test.GetVariant", default, default))
+            {
+                __plCall.Invoke();
+                Assert.Equal(new Vec3(1, 2, 3), (Vec3)__plCall.ResultAny(-1));
+            }
+
+            using (EngineCall __plCall = new(FloatCall, "Test.GetNumber", default, default))
+            {
+                __plCall.Invoke();
+                Assert.Equal(0.5f, (float)__plCall.ResultAny(-1));
+            }
+        });
+    }
+
+    [Fact]
     public void SmallValuesComeBackInlineOnBothPaths()
     {
         WithStub(() =>
